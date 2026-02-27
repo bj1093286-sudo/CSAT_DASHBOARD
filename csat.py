@@ -1034,6 +1034,19 @@ def inject_css():
         border-radius: 8px;
         font-weight: 600;
       }}
+
+      section[data-testid="stSidebar"] div[data-testid="stButton"] > button {{
+        position: absolute !important;
+        top: -36px !important;
+        left: 0 !important;
+        opacity: 0 !important;
+        height: 36px !important;
+        width: 100% !important;
+        z-index: 999 !important;
+        cursor: pointer !important;
+        border: none !important;
+        background: transparent !important;
+      }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1800,56 +1813,81 @@ def page_search(df_scored_all, df_all):
 # 14. 사이드바 네비게이션
 # ══════════════════════════════════════════════════════════════════
 MENU_ITEMS = [
-    {"key": "개요",           "icon": "🏠", "label": "대시보드"},
-    {"key": "일자·주차",      "icon": "📅", "label": "일자·주차"},
-    {"key": "점수분석",       "icon": "📊", "label": "점수분석"},
-    {"key": "주관식분석",     "icon": "💬", "label": "주관식분석"},
-    {"key": "통합분석(히트맵)","icon": "🗺️", "label": "통합분석(히트맵)"},
-    {"key": "Action필요",     "icon": "⚠️", "label": "Action 필요"},
-    {"key": "일별상담사성과", "icon": "👤", "label": "일별 상담사 성과"},
-    {"key": "70점미만_전체",  "icon": "🔴", "label": "70점 미만 전체"},
-    {"key": "검색",           "icon": "🔍", "label": "검색"},
+    {"key": "개요",            "label": "대시보드"},
+    {"key": "일자·주차",       "label": "일자·주차"},
+    {"key": "점수분석",        "label": "점수분석"},
+    {"key": "주관식분석",      "label": "주관식분석"},
+    {"key": "통합분석(히트맵)", "label": "통합분석(히트맵)"},
+    {"key": "Action필요",      "label": "Action 필요"},
+    {"key": "일별상담사성과",  "label": "일별 상담사 성과"},
+    {"key": "70점미만_전체",   "label": "70점 미만 전체"},
+    {"key": "검색",            "label": "검색"},
 ]
 
 
 def render_sidebar_nav(current_menu: str) -> str:
-    """사이드바 네비게이션 렌더링. 선택된 메뉴 키 반환."""
-    # 브랜드 영역
-    st.sidebar.markdown("""
-    <div class="sb-brand">
-      <div class="sb-brand-icon">C</div>
-      <div>
-        <div class="sb-brand-text">CSAT Dashboard</div>
-        <div class="sb-brand-sub">고객 만족도 분석</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.sidebar:
+        st.markdown("""
+        <div style="padding:18px 16px 14px;
+                    border-bottom:1px solid #CBD5E1;">
+            <div style="font-size:15px;font-weight:700;color:#1E3A5F;">
+                CSAT Dashboard
+            </div>
+            <div style="font-size:11px;color:#6B7280;margin-top:2px;">
+                고객 만족도 분석
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # 메뉴 라디오 (숨겨진 실제 컨트롤)
-    menu_labels = [f"{item['icon']}  {item['label']}" for item in MENU_ITEMS]
-    menu_keys   = [item["key"] for item in MENU_ITEMS]
+        st.markdown("""
+        <div style="padding:14px 16px 6px;font-size:10px;
+                    font-weight:700;color:#94A3B8;letter-spacing:1.2px;">
+            메뉴
+        </div>
+        """, unsafe_allow_html=True)
 
-    current_idx = next((i for i, item in enumerate(MENU_ITEMS) if item["key"] == current_menu), 0)
+        if "menu" not in st.session_state:
+            st.session_state["menu"] = MENU_ITEMS[0]["key"]
 
-    st.sidebar.markdown('<div class="sb-section-label">메뉴</div>', unsafe_allow_html=True)
+        for item in MENU_ITEMS:
+            key   = item["key"]
+            label = item["label"]
+            is_active = st.session_state["menu"] == key
 
-    selected_label = st.sidebar.radio(
-        "nav",
-        menu_labels,
-        index=current_idx,
-        label_visibility="collapsed",
-    )
-    selected_key = menu_keys[menu_labels.index(selected_label)]
+            if is_active:
+                st.markdown(f"""
+                <div style="margin:1px 8px;padding:9px 14px;
+                            border-radius:8px;
+                            background:#EFF6FF;
+                            border-left:3px solid #2563EB;">
+                    <span style="font-size:13px;font-weight:600;
+                                 color:#2563EB;">{label}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style="margin:1px 8px;padding:9px 14px;
+                            border-radius:8px;
+                            border-left:3px solid transparent;">
+                    <span style="font-size:13px;font-weight:400;
+                                 color:#374151;">{label}</span>
+                </div>
+                """, unsafe_allow_html=True)
 
-    st.sidebar.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+            if st.button(label, key=f"nav_{key}", use_container_width=True):
+                st.session_state["menu"] = key
+                st.rerun()
 
-    # 새로고침 버튼
-    if st.sidebar.button("🔄  구글시트 새로고침", use_container_width=True):
-        load_from_gsheets.clear()
-        st.rerun()
+        st.markdown(
+            "<hr style='margin:12px 16px;border-color:#CBD5E1;'>",
+            unsafe_allow_html=True
+        )
 
-    return selected_key
+        if st.button("🔄  구글시트 새로고침", use_container_width=True, key="refresh_btn"):
+            load_from_gsheets.clear()
+            st.rerun()
 
+    return st.session_state["menu"]
 
 # ══════════════════════════════════════════════════════════════════
 # 15. Streamlit App 메인
