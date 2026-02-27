@@ -1670,6 +1670,7 @@ def page_daily_agent(df_m):
     section_title("일자별 상담사 피벗 테이블", "📋")
     pivot_disp = pivot_df.reset_index()
     pivot_disp.columns.name = None
+    pivot_disp = pivot_disp.where(pd.notnull(pivot_disp), other="")
     st.dataframe(pivot_disp, use_container_width=True, hide_index=True)
 
     section_title("상담사별 성과 요약", "👤")
