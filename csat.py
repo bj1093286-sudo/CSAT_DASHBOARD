@@ -11,7 +11,7 @@ from streamlit_gsheets import GSheetsConnection
 
 
 # ══════════════════════════════════════════════════════════════════
-# 0. 전역 상수 & 색상 팔레트 (기존 유지)
+# 0. 전역 상수 & 색상 팔레트
 # ══════════════════════════════════════════════════════════════════
 FONT_NAME  = "Noto Sans KR"
 C_NAVY     = "#1E3A5F"
@@ -37,12 +37,11 @@ CHART_COLORS = [
 
 SCORE_GOOD    = 90
 SCORE_CAUTION = 70
-
 EXCLUDED_AGENTS = {"엄소라","이은덕","한인경","양현정","이혜선","박성주"}
 
 
 # ══════════════════════════════════════════════════════════════════
-# 1. 날짜 파싱 (기존 유지)
+# 1. 날짜 파싱
 # ══════════════════════════════════════════════════════════════════
 def parse_date_series(series: pd.Series) -> pd.Series:
     def try_parse(val):
@@ -50,11 +49,9 @@ def parse_date_series(series: pd.Series) -> pd.Series:
             return pd.NaT
         if isinstance(val, (pd.Timestamp, datetime)):
             return pd.Timestamp(val)
-
-        s = str(val).strip().replace(" ","")
-        if s in ("","nan","NaT","None","NaN"):
+        s = str(val).strip().replace(" ", "")
+        if s in ("", "nan", "NaT", "None", "NaN"):
             return pd.NaT
-
         try:
             num = float(s)
             if 40000 < num < 60000:
@@ -65,20 +62,17 @@ def parse_date_series(series: pd.Series) -> pd.Series:
                 return pd.to_datetime(str(int(num)), format="%Y%m", errors="coerce")
         except (ValueError, TypeError):
             pass
-
-        for fmt in ["%Y-%m-%d","%Y/%m/%d","%Y.%m.%d","%Y-%m","%Y/%m",
-                    "%Y.%m","%Y%m%d","%Y%m","%m/%d/%Y","%d/%m/%Y",
-                    "%Y년%m월%d일","%Y년%m월"]:
+        for fmt in ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y-%m", "%Y/%m",
+                    "%Y.%m", "%Y%m%d", "%Y%m", "%m/%d/%Y", "%d/%m/%Y",
+                    "%Y년%m월%d일", "%Y년%m월"]:
             try:
                 return pd.to_datetime(s, format=fmt)
             except Exception:
                 continue
-
         try:
             return pd.to_datetime(s, infer_datetime_format=True, errors="coerce")
         except Exception:
             return pd.NaT
-
     return series.apply(try_parse)
 
 
@@ -88,7 +82,7 @@ def extract_ym(series: pd.Series) -> pd.Series:
 
 
 # ══════════════════════════════════════════════════════════════════
-# 2. 감성 분류 (기존 유지)
+# 2. 감성 분류
 # ══════════════════════════════════════════════════════════════════
 POS_WORDS = [
     "감사합니다","고맙습니다","감사드립니다","정말감사","너무감사","진심감사",
@@ -132,12 +126,12 @@ NEG_WORDS = [
     "전체반품","전부보내","불필요하게","과도한요구",
 ]
 NEGATION_PATTERNS = [
-    r"불편함?\s*없",r"불만\s*없",r"문제\s*없",r"걱정\s*없",
-    r"어렵지\s*않",r"나쁘지\s*않",r"부족하지\s*않",
-    r"아쉽지\s*않",r"실망하지\s*않",r"불편하지\s*않",
-    r"늦지\s*않",r"느리지\s*않",
+    r"불편함?\s*없", r"불만\s*없", r"문제\s*없", r"걱정\s*없",
+    r"어렵지\s*않", r"나쁘지\s*않", r"부족하지\s*않",
+    r"아쉽지\s*않", r"실망하지\s*않", r"불편하지\s*않",
+    r"늦지\s*않", r"느리지\s*않",
     r"(?:전혀|하나도)\s*(?:불편|불만|문제)",
-    r"전혀\s*없",r"하나도\s*없",
+    r"전혀\s*없", r"하나도\s*없",
 ]
 NEG_PATTERNS = [
     r"(?:잠깐만|잠시만|조금만).{0,10}(?:요|요\.)",
@@ -156,21 +150,17 @@ NEG_PATTERNS = [
 def classify_sentiment(text: str) -> str:
     if not isinstance(text, str) or text.strip() == "":
         return None
-
-    t = re.sub(r"\s+","",text.strip())
+    t = re.sub(r"\s+", "", text.strip())
     for pat in NEG_PATTERNS:
         if re.search(pat, text.strip()):
             return "부정"
-
     negated   = any(re.search(p, t) for p in NEGATION_PATTERNS)
     pos_count = sum(1 for w in POS_WORDS if w in t)
     neg_count = 0 if negated else sum(1 for w in NEG_WORDS if w in t)
-
     if neg_count == 0 and pos_count == 0:
         short_pos = ["감사합니다","고맙습니다","잘됐어요","잘됐습니다","해결됐어요",
                      "완료됐습니다","수고하셨습니다","잘부탁드립니다"]
         return "긍정" if any(w in t for w in short_pos) else "중립"
-
     return "부정" if neg_count > pos_count else "긍정"
 
 
@@ -200,7 +190,7 @@ def add_sentiment_column(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ══════════════════════════════════════════════════════════════════
-# 3. 컬럼 매핑 (기존 유지)
+# 3. 컬럼 매핑
 # ══════════════════════════════════════════════════════════════════
 COL_MAP = {
     "회신월":"회신월","발송월":"발송월",
@@ -238,47 +228,44 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(columns=rename)
 
     fallback = {
-        "친절점수":  ["친절","Q1점수"],
-        "만족점수":  ["만족","Q2점수"],
-        "최종점수":  ["최종","final"],
-        "주관식":    ["Q3","verbatim","의견"],
-        "상담사":    ["agent","담당자"],
-        "브랜드":    ["brand"],
-        "채널":      ["channel","매체"],
-        "근속":      ["근속","tenure"],
-        "입사일":    ["입사"],
-        "상담유형대":["대분류","유형대"],
-        "문의유형":  ["문의","inquiry"],
-        "회신주차":  ["회신주차","reply_week","replyweek"],
-        "발송주차":  ["발송주차","send_week","sendweek"],
+        "친절점수":   ["친절","Q1점수"],
+        "만족점수":   ["만족","Q2점수"],
+        "최종점수":   ["최종","final"],
+        "주관식":     ["Q3","verbatim","의견"],
+        "상담사":     ["agent","담당자"],
+        "브랜드":     ["brand"],
+        "채널":       ["channel","매체"],
+        "근속":       ["근속","tenure"],
+        "입사일":     ["입사"],
+        "상담유형대": ["대분류","유형대"],
+        "문의유형":   ["문의","inquiry"],
+        "회신주차":   ["회신주차","reply_week","replyweek"],
+        "발송주차":   ["발송주차","send_week","sendweek"],
+        "상담KEY":    ["상담key","상담Key","상담키","consultkey"],
     }
     for std, kws in fallback.items():
         if std not in df.columns:
             for col in df.columns:
-                if any(kw in col for kw in kws):
+                if any(kw.lower() in col.lower() for kw in kws):
                     df = df.rename(columns={col: std})
                     break
-
     return df
 
 
 # ══════════════════════════════════════════════════════════════════
-# 4. 데이터 정제 (기존 + 근속 fallback 추가)
+# 4. 데이터 정제
 # ══════════════════════════════════════════════════════════════════
 def build_time_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # 숫자 변환
     for col in ["친절점수","만족점수","최종점수","총합","Q1","Q2"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # 날짜 파싱
     for dcol in ["회신일자","발송일자","입사일"]:
         if dcol in df.columns:
             df[dcol] = parse_date_series(df[dcol])
 
-    # 월 생성
     def make_month_col(col_name):
         if col_name in df.columns:
             parsed = extract_ym(df[col_name])
@@ -292,7 +279,6 @@ def build_time_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["발송월_정제"] = make_month_col("발송월")
     df["회신월_정제"] = make_month_col("회신월")
 
-    # 회신일 / 발송일
     if "회신일자" in df.columns:
         df["회신일자_정제"] = parse_date_series(df["회신일자"])
         df["회신일"] = df["회신일자_정제"].dt.strftime("%Y-%m-%d").where(df["회신일자_정제"].notna(), pd.NA)
@@ -307,7 +293,6 @@ def build_time_columns(df: pd.DataFrame) -> pd.DataFrame:
         df["발송일자_정제"] = pd.NaT
         df["발송일"] = pd.NA
 
-    # 주차
     def make_week_str(ts):
         if pd.isna(ts):
             return pd.NA
@@ -316,19 +301,16 @@ def build_time_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     if "회신주차" in df.columns:
         df["회신주차_정제"] = df["회신주차"].astype(str).str.strip().replace(
-            {"nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "": pd.NA, "NaN": pd.NA}
-        )
+            {"nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "": pd.NA, "NaN": pd.NA})
     else:
         df["회신주차_정제"] = df["회신일자_정제"].apply(make_week_str)
 
     if "발송주차" in df.columns:
         df["발송주차_정제"] = df["발송주차"].astype(str).str.strip().replace(
-            {"nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "": pd.NA, "NaN": pd.NA}
-        )
+            {"nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "": pd.NA, "NaN": pd.NA})
     else:
         df["발송주차_정제"] = df["발송일자_정제"].apply(make_week_str)
 
-    # 채널 구분
     if "채널" in df.columns:
         def norm_ch(v):
             v = str(v).strip()
@@ -341,18 +323,13 @@ def build_time_columns(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["채널_구분"] = "전체"
 
-    # ── NEW: 근속 fallback 생성 ───────────────────────────────
-    # 우선순위: (1) 이미 '근속' 컬럼 있으면 그대로 사용
-    #         (2) 없고 '입사일' 있으면 근속개월 + 근속(구간) 생성
+    # 근속 fallback
     if "근속" not in df.columns:
         if "입사일" in df.columns:
-            ref = df["회신일자_정제"]
-            # 회신일이 비어있으면 오늘 기준
+            ref   = df["회신일자_정제"]
             today = pd.Timestamp(datetime.now().date())
-            ref = ref.where(ref.notna(), other=today)
-
-            join = df["입사일"]
-            # 입사일이 NaT면 근속 계산 불가
+            ref   = ref.where(ref.notna(), other=today)
+            join  = df["입사일"]
             months = np.where(
                 join.notna() & ref.notna(),
                 (ref.dt.year - join.dt.year) * 12 + (ref.dt.month - join.dt.month),
@@ -361,34 +338,24 @@ def build_time_columns(df: pd.DataFrame) -> pd.DataFrame:
             df["근속개월"] = pd.to_numeric(months, errors="coerce")
 
             def bucket(m):
-                if pd.isna(m):
-                    return pd.NA
+                if pd.isna(m): return pd.NA
                 m = float(m)
-                if m < 3:
-                    return "0~3개월"
-                if m < 6:
-                    return "3~6개월"
-                if m < 12:
-                    return "6~12개월"
-                if m < 24:
-                    return "1~2년"
+                if m < 3:   return "0~3개월"
+                if m < 6:   return "3~6개월"
+                if m < 12:  return "6~12개월"
+                if m < 24:  return "1~2년"
                 return "2년+"
 
             df["근속"] = pd.Series(df["근속개월"]).apply(bucket)
         else:
             df["근속"] = pd.NA
-    else:
-        # 기존 데이터에 근속이 있으면 숫자도 만들어두고 싶다면(선택)
-        # df["근속개월"] = pd.NA
-        pass
-    # ─────────────────────────────────────────────────────────
 
     return df
 
 
 def split_active_and_scored(df: pd.DataFrame):
     MISSING = {"#N/A","nan","NaT","None","NA","N/A","","#REF!","NaN","<NA>"}
-    df_all = df.copy()
+    df_all  = df.copy()
 
     retired_agents = set()
     if "입사일" in df.columns:
@@ -415,12 +382,11 @@ def split_active_and_scored(df: pd.DataFrame):
         m for m in df_scored["회신월_정제"].dropna().unique().tolist()
         if m != "미확인"
     ])
-
     return df_all, df_active, df_scored, df_scored_all, available_months, retired_agents
 
 
 # ══════════════════════════════════════════════════════════════════
-# 5. 분석 함수(기존 유지)
+# 5. 분석 함수
 # ══════════════════════════════════════════════════════════════════
 def _agent_filter(df: pd.DataFrame) -> pd.DataFrame:
     if "상담사" not in df.columns:
@@ -432,15 +398,15 @@ def calc_response_rate(df_all, df_scored, group_col=None):
     if group_col and group_col in df_all.columns:
         rows = []
         for g in sorted(df_all[group_col].dropna().unique()):
-            total  = len(df_all[df_all[group_col]==g])
-            scored = len(df_scored[df_scored[group_col]==g]) if group_col in df_scored.columns else 0
-            rows.append({"구분":g,"발송건수":total,"응답건수":scored,
-                         "응답률(%)":round(scored/total*100,1) if total>0 else 0})
+            total  = len(df_all[df_all[group_col] == g])
+            scored = len(df_scored[df_scored[group_col] == g]) if group_col in df_scored.columns else 0
+            rows.append({"구분": g, "발송건수": total, "응답건수": scored,
+                         "응답률(%)": round(scored / total * 100, 1) if total > 0 else 0})
         return pd.DataFrame(rows)
     total  = len(df_all)
     scored = len(df_scored)
-    return pd.DataFrame([{"구분":"전체","발송건수":total,"응답건수":scored,
-                          "응답률(%)":round(scored/total*100,1) if total>0 else 0}])
+    return pd.DataFrame([{"구분": "전체", "발송건수": total, "응답건수": scored,
+                          "응답률(%)": round(scored / total * 100, 1) if total > 0 else 0}])
 
 
 def pivot_avg(df, group_col, agent_filter=False):
@@ -454,8 +420,7 @@ def pivot_avg(df, group_col, agent_filter=False):
         res = res.merge(cnt, on=group_col, how="left")
     if "최종점수" in res.columns:
         res["상태"] = res["최종점수"].apply(
-            lambda x: "🔴 주의" if x < SCORE_CAUTION
-                      else ("🟡 관찰" if x < SCORE_GOOD else "🟢 양호"))
+            lambda x: "🔴 주의" if x < SCORE_CAUTION else ("🟡 관찰" if x < SCORE_GOOD else "🟢 양호"))
         res = res.sort_values("최종점수", ascending=False)
     return res
 
@@ -474,9 +439,9 @@ def sentiment_summary(df):
     counts = df["긍정부정"].value_counts()
     total  = counts.sum()
     return pd.DataFrame([
-        {"긍정/부정":l,
-         "건수":counts.get(l,0),
-         "비율(%)":round(counts.get(l,0)/total*100,1) if total>0 else 0}
+        {"긍정/부정": l,
+         "건수": counts.get(l, 0),
+         "비율(%)": round(counts.get(l, 0) / total * 100, 1) if total > 0 else 0}
         for l in ["긍정","중립","부정"]
     ])
 
@@ -505,10 +470,10 @@ def calc_mom(now_val, prev_val, is_pp=False):
         n, p = float(now_val), float(prev_val)
         if is_pp:
             d = round(n - p, 1)
-            s = f"{'▲' if d>=0 else '▼'}{abs(d)}%p"
+            s = f"{'▲' if d >= 0 else '▼'}{abs(d)}%p"
         else:
             d = round((n - p) / abs(p) * 100, 1)
-            s = f"{'▲' if d>=0 else '▼'}{abs(d)}%"
+            s = f"{'▲' if d >= 0 else '▼'}{abs(d)}%"
         return d, s
     except Exception:
         return None, "-"
@@ -537,7 +502,7 @@ def action_needed(df, df_all):
                     "우선순위":"🟠 개선"})
 
     if "긍정부정" in df.columns:
-        neg = df[df["긍정부정"]=="부정"]
+        neg = df[df["긍정부정"] == "부정"]
         if len(neg) > 0:
             actions.append({"구분":"VOC","항목":"부정 응답",
                 "내용":f"{len(neg)}건 부정 의견 감지 – 즉시 VOC 검토 필요",
@@ -553,7 +518,7 @@ def action_needed(df, df_all):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 6. 주차/일자 필터 (기존 유지)
+# 6. 주차/일자 필터
 # ══════════════════════════════════════════════════════════════════
 def _normalize_week_str(w):
     if not w:
@@ -580,11 +545,23 @@ def get_week_range(week_str: str):
         return None, None
 
 
+def get_prev_week_str(week_str: str, offset: int = 1) -> str:
+    try:
+        week_str = _normalize_week_str(week_str)
+        start, _ = get_week_range(week_str)
+        if start is None:
+            return ""
+        prev = start - pd.Timedelta(weeks=offset)
+        iso  = prev.isocalendar()
+        return f"{iso[0]}-W{iso[1]:02d}"
+    except Exception:
+        return ""
+
+
 def filter_by_week(df: pd.DataFrame, week_str: str, week_col: str = "회신주차_정제") -> pd.DataFrame:
     if not week_str:
         return pd.DataFrame(columns=df.columns)
     week_str_norm = _normalize_week_str(week_str)
-
     for try_col in [week_col, "회신주차_정제", "회신주차"]:
         if try_col in df.columns:
             mask = df[try_col].astype(str).str.strip() == week_str_norm
@@ -595,7 +572,6 @@ def filter_by_week(df: pd.DataFrame, week_str: str, week_col: str = "회신주�
             result2 = df[mask2].copy()
             if not result2.empty:
                 return result2
-
     start, end = get_week_range(week_str_norm)
     if start is None or "회신일자_정제" not in df.columns:
         return pd.DataFrame(columns=df.columns)
@@ -607,7 +583,6 @@ def filter_by_week_sent(df: pd.DataFrame, week_str: str) -> pd.DataFrame:
     if not week_str:
         return pd.DataFrame(columns=df.columns)
     week_str_norm = _normalize_week_str(week_str)
-
     for try_col in ["발송주차_정제", "발송주차"]:
         if try_col in df.columns:
             mask = df[try_col].astype(str).str.strip() == week_str_norm
@@ -618,7 +593,6 @@ def filter_by_week_sent(df: pd.DataFrame, week_str: str) -> pd.DataFrame:
             result2 = df[mask2].copy()
             if not result2.empty:
                 return result2
-
     start, end = get_week_range(week_str_norm)
     if start is None or "발송일자_정제" not in df.columns:
         return pd.DataFrame(columns=df.columns)
@@ -661,88 +635,422 @@ def filter_by_date_sent(df: pd.DataFrame, date_str: str) -> pd.DataFrame:
 
 
 # ══════════════════════════════════════════════════════════════════
-# 7. Google Sheets 로드 (첫 번째 시트 기본)
+# 7. RAW 테이블 컬럼 정렬 (상담KEY 맨 앞)
+# ══════════════════════════════════════════════════════════════════
+def get_display_cols(df: pd.DataFrame, preferred: list) -> list:
+    """상담KEY를 맨 앞에, preferred 순서대로, 나머지는 뒤에"""
+    result = []
+    if "상담KEY" in df.columns:
+        result.append("상담KEY")
+    for c in preferred:
+        if c in df.columns and c not in result:
+            result.append(c)
+    for c in df.columns:
+        if c not in result and not c.startswith("_") and c not in [
+            "발송월_정제","회신월_정제","회신일자_정제","발송일자_정제",
+            "회신주차_정제","발송주차_정제","근속개월"
+        ]:
+            result.append(c)
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════
+# 8. Google Sheets 로드
 # ══════════════════════════════════════════════════════════════════
 @st.cache_data(ttl=600)
 def load_from_gsheets() -> pd.DataFrame:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(ttl="10m")  # 첫 번째 시트(기본) [Source: public-gsheet]
-    df = df.dropna(axis=0, how="all").dropna(axis=1, how="all").reset_index(drop=True)
+    df   = conn.read(ttl="10m")
+    df   = df.dropna(axis=0, how="all").dropna(axis=1, how="all").reset_index(drop=True)
     return df
 
 
-def prepare_data(df_raw: pd.DataFrame):
+@st.cache_data(ttl=600)
+def prepare_data(df_raw_hash):
+    # df_raw_hash: tuple(df.values.tobytes()) 등으로 캐시 키 사용
+    # 실제로는 df를 직접 받음 (streamlit cache는 df 직접 가능)
+    pass
+
+
+def prepare_data_from_df(df_raw: pd.DataFrame):
     df = normalize_columns(df_raw)
     df = build_time_columns(df)
-    df_all, df_active, df_scored, df_scored_all, available_months, retired_agents = split_active_and_scored(df)
-    return df_all, df_active, df_scored, df_scored_all, available_months, retired_agents
+    return split_active_and_scored(df)
 
 
 # ══════════════════════════════════════════════════════════════════
-# 8. UI (CSS)
+# 9. 채널별 월별 추이
+# ══════════════════════════════════════════════════════════════════
+def build_channel_monthly_trend(df_all, df_scored_all, all_months):
+    result = {}
+    if "채널_구분" not in df_all.columns:
+        return result
+    channels = sorted(df_all["채널_구분"].dropna().unique())
+
+    def fm_s(df, month):
+        for c in ["발송월_정제","회신월_정제"]:
+            if c in df.columns:
+                r = df[df[c].astype(str) == month].copy()
+                if len(r) > 0:
+                    return r
+        return df.copy()
+
+    def fm(df, month):
+        if "회신월_정제" in df.columns:
+            return df[df["회신월_정제"].astype(str) == month].copy()
+        return df.copy()
+
+    for ch in channels:
+        rows = []
+        for m in all_months:
+            ms    = fm_s(df_all, m)
+            mr    = fm(df_scored_all, m)
+            ms_ch = ms[ms["채널_구분"] == ch] if "채널_구분" in ms.columns else ms
+            mr_ch = mr[mr["채널_구분"] == ch] if "채널_구분" in mr.columns else mr
+            t = len(ms_ch); r = len(mr_ch)
+            row_d = {"월": m, "발송건수": t, "응답건수": r,
+                     "응답률(%)": round(r / t * 100, 1) if t > 0 else 0}
+            for sc in ["친절점수","만족점수","최종점수"]:
+                if sc in mr_ch.columns and mr_ch[sc].notna().any():
+                    row_d[sc] = round(mr_ch[sc].mean(), 1)
+                else:
+                    row_d[sc] = None
+            rows.append(row_d)
+        result[ch] = pd.DataFrame(rows)
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════
+# 10. 3주 트렌드 데이터 생성
+# ══════════════════════════════════════════════════════════════════
+def build_week_trend_data(df_all, df_scored_all, selected_week):
+    MISSING_SET_W = {"","nan","NaT","None","NaN","<NA>","NA"}
+    w_col = "회신주차_정제" if "회신주차_정제" in df_scored_all.columns else "회신주차"
+    all_weeks_sorted = []
+    if w_col in df_scored_all.columns:
+        all_weeks_sorted = sorted([
+            str(w) for w in df_scored_all[w_col].dropna().unique()
+            if str(w) not in MISSING_SET_W
+        ])
+
+    selected_week_norm = _normalize_week_str(selected_week)
+
+    def _get_prev(wk_norm, offset):
+        if wk_norm in all_weeks_sorted:
+            idx = all_weeks_sorted.index(wk_norm)
+            if idx - offset >= 0:
+                return all_weeks_sorted[idx - offset]
+        return get_prev_week_str(wk_norm, offset)
+
+    w_prev2 = _get_prev(selected_week_norm, 2)
+    w_prev1 = _get_prev(selected_week_norm, 1)
+    week_list   = [w_prev2, w_prev1, selected_week_norm]
+    week_labels = [
+        f"W-2 ({w_prev2})"            if w_prev2 else "W-2",
+        f"W-1 ({w_prev1})"            if w_prev1 else "W-1",
+        f"선택 ({selected_week_norm})",
+    ]
+
+    rate_vals  = []
+    score_rows = {"친절점수":[], "만족점수":[], "최종점수":[]}
+
+    for wk in week_list:
+        if not wk:
+            rate_vals.append(None)
+            for k in score_rows:
+                score_rows[k].append(None)
+            continue
+        wk_all = filter_by_week_sent(df_all, wk)
+        wk_kpi = filter_by_week(df_scored_all, wk, week_col="회신주차_정제")
+        t = len(wk_all); r = len(wk_kpi)
+        rate_vals.append(round(r / t * 100, 1) if t > 0 else 0.0)
+        for k in score_rows:
+            if k in wk_kpi.columns and wk_kpi[k].notna().any():
+                score_rows[k].append(round(wk_kpi[k].mean(), 1))
+            else:
+                score_rows[k].append(None)
+
+    return {"labels": week_labels, "rate_vals": rate_vals, "score_rows": score_rows}
+
+
+# ══════════════════════════════════════════════════════════════════
+# 11. UI (CSS + 사이드바)
 # ══════════════════════════════════════════════════════════════════
 def inject_css():
-    st.markdown(
-        f"""
-        <style>
-          .block-container {{ padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1450px; }}
-          section[data-testid="stSidebar"] {{
-            background: {C_GRAY_LT};
-            border-right: 1px solid {C_BORDER};
-          }}
-          .kpi {{
-            border: 1px solid {C_BORDER};
-            border-radius: 14px;
-            padding: 12px 14px;
-            background: white;
-          }}
-          .kpi-label {{
-            color: {C_GRAY};
-            font-size: 12px;
-            font-weight: 700;
-            margin-bottom: 6px;
-          }}
-          .kpi-value {{
-            font-size: 22px;
-            font-weight: 900;
-            color: {C_NAVY};
-            line-height: 1.15;
-          }}
-          .kpi-delta {{
-            font-size: 12px;
-            font-weight: 800;
-            margin-top: 6px;
-          }}
-          .section-title {{
-            font-size: 16px;
-            font-weight: 900;
-            color: {C_NAVY};
-            margin: 10px 0 10px 0;
-          }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+
+      html, body, [class*="css"] {{
+        font-family: 'Noto Sans KR', sans-serif;
+      }}
+
+      .block-container {{
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+        max-width: 1500px;
+      }}
+
+      /* ── 사이드바 전체 ── */
+      section[data-testid="stSidebar"] {{
+        background: #FFFFFF;
+        border-right: 1px solid {C_BORDER};
+        min-width: 220px !important;
+        max-width: 240px !important;
+      }}
+      section[data-testid="stSidebar"] > div {{
+        padding: 0 !important;
+      }}
+
+      /* ── 사이드바 로고/브랜드 영역 ── */
+      .sb-brand {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 18px 16px 12px 16px;
+        border-bottom: 1px solid {C_BORDER};
+        margin-bottom: 4px;
+      }}
+      .sb-brand-icon {{
+        width: 32px; height: 32px;
+        background: {C_NAVY};
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        color: white; font-size: 16px; font-weight: 900;
+      }}
+      .sb-brand-text {{
+        font-size: 14px; font-weight: 900; color: {C_NAVY};
+        line-height: 1.2;
+      }}
+      .sb-brand-sub {{
+        font-size: 10px; color: {C_GRAY}; font-weight: 400;
+      }}
+
+      /* ── 사이드바 섹션 레이블 ── */
+      .sb-section-label {{
+        font-size: 10px;
+        font-weight: 700;
+        color: {C_GRAY};
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 12px 16px 4px 16px;
+      }}
+
+      /* ── 사이드바 메뉴 아이템 ── */
+      .sb-nav-item {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 16px;
+        border-radius: 8px;
+        margin: 2px 8px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        color: #374151;
+        text-decoration: none;
+        transition: background 0.15s;
+      }}
+      .sb-nav-item:hover {{
+        background: {C_GRAY_LT};
+      }}
+      .sb-nav-item.active {{
+        background: {C_BLUE_LT};
+        color: {C_BLUE};
+        font-weight: 700;
+      }}
+      .sb-nav-icon {{
+        width: 22px; height: 22px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 15px;
+      }}
+      .sb-badge {{
+        margin-left: auto;
+        background: {C_RED};
+        color: white;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 10px;
+      }}
+      .sb-badge-prep {{
+        margin-left: auto;
+        background: {C_AMBER};
+        color: white;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 10px;
+      }}
+
+      /* ── 사이드바 구분선 ── */
+      .sb-divider {{
+        height: 1px;
+        background: {C_BORDER};
+        margin: 8px 16px;
+      }}
+
+      /* ── 사이드바 새로고침 버튼 ── */
+      .sb-refresh-btn {{
+        margin: 8px 12px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid {C_BORDER};
+        background: white;
+        color: {C_NAVY};
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        width: calc(100% - 24px);
+        text-align: center;
+      }}
+
+      /* ── 사이드바 기간 선택 영역 ── */
+      .sb-period-area {{
+        padding: 8px 12px;
+      }}
+      .sb-period-title {{
+        font-size: 11px;
+        font-weight: 700;
+        color: {C_GRAY};
+        margin-bottom: 6px;
+        letter-spacing: 0.05em;
+      }}
+
+      /* ── KPI 카드 ── */
+      .kpi {{
+        border: 1px solid {C_BORDER};
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: white;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }}
+      .kpi-label {{
+        color: {C_GRAY};
+        font-size: 11px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }}
+      .kpi-value {{
+        font-size: 24px;
+        font-weight: 900;
+        color: {C_NAVY};
+        line-height: 1.15;
+      }}
+      .kpi-delta {{
+        font-size: 12px;
+        font-weight: 700;
+        margin-top: 6px;
+      }}
+
+      /* ── 섹션 타이틀 ── */
+      .section-title {{
+        font-size: 15px;
+        font-weight: 900;
+        color: {C_NAVY};
+        margin: 14px 0 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }}
+
+      /* ── 페이지 헤더 ── */
+      .page-header {{
+        background: linear-gradient(135deg, {C_NAVY} 0%, #2563EB 100%);
+        border-radius: 14px;
+        padding: 20px 24px;
+        margin-bottom: 16px;
+        color: white;
+      }}
+      .page-header-title {{
+        font-size: 22px;
+        font-weight: 900;
+        line-height: 1.3;
+      }}
+      .page-header-sub {{
+        font-size: 12px;
+        opacity: 0.8;
+        margin-top: 4px;
+      }}
+
+      /* ── 배지 ── */
+      .badge-green {{
+        background: {C_GREEN_LT};
+        color: {C_GREEN};
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 8px;
+      }}
+      .badge-red {{
+        background: {C_RED_LT};
+        color: {C_RED};
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 8px;
+      }}
+      .badge-amber {{
+        background: {C_AMBER_LT};
+        color: {C_AMBER};
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 8px;
+      }}
+
+      /* ── 주차 트렌드 테이블 ── */
+      .trend-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }}
+      .trend-table th {{
+        background: {C_NAVY};
+        color: white;
+        padding: 8px 12px;
+        text-align: center;
+        font-weight: 700;
+      }}
+      .trend-table td {{
+        padding: 8px 12px;
+        text-align: center;
+        border-bottom: 1px solid {C_BORDER};
+      }}
+      .trend-table tr:nth-child(even) td {{
+        background: {C_GRAY_LT};
+      }}
+
+      /* Streamlit 기본 스타일 오버라이드 */
+      div[data-testid="stSelectbox"] label,
+      div[data-testid="stRadio"] label {{
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        color: {C_GRAY} !important;
+      }}
+      div.stButton > button {{
+        border-radius: 8px;
+        font-weight: 600;
+      }}
+    </style>
+    """, unsafe_allow_html=True)
 
 
 def kpi_card(label, value, delta="-", delta_color=C_GRAY):
-    st.markdown(
-        f"""
-        <div class="kpi">
-          <div class="kpi-label">{label}</div>
-          <div class="kpi-value">{value}</div>
-          <div class="kpi-delta" style="color:{delta_color}">{delta}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""
+    <div class="kpi">
+      <div class="kpi-label">{label}</div>
+      <div class="kpi-value">{value}</div>
+      <div class="kpi-delta" style="color:{delta_color}">{delta}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def dcol(s):
-    if str(s).startswith("▲"):
-        return C_GREEN
-    if str(s).startswith("▼"):
-        return C_RED
+    if str(s).startswith("▲"): return C_GREEN
+    if str(s).startswith("▼"): return C_RED
     return C_GRAY
 
 
@@ -752,8 +1060,21 @@ def safe_mean(df, col):
     return None
 
 
+def section_title(text, icon=""):
+    st.markdown(f'<div class="section-title">{icon} {text}</div>', unsafe_allow_html=True)
+
+
+def page_header(title, sub=""):
+    st.markdown(f"""
+    <div class="page-header">
+      <div class="page-header-title">{title}</div>
+      {"<div class='page-header-sub'>" + sub + "</div>" if sub else ""}
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ══════════════════════════════════════════════════════════════════
-# 9. 월/주/일 데이터 생성 (대시보드용)
+# 12. 월/발송 필터 헬퍼
 # ══════════════════════════════════════════════════════════════════
 def fm(df, month, col="회신월_정제"):
     return df[df[col].astype(str) == month].copy() if (month and col in df.columns) else df.copy()
@@ -773,56 +1094,58 @@ def fm_sent(df, month):
 def compute_monthly_trends(df_all, df_scored_all):
     if "회신월_정제" not in df_scored_all.columns:
         return pd.DataFrame(), pd.DataFrame()
-
     all_months = sorted([m for m in df_scored_all["회신월_정제"].dropna().unique() if m != "미확인"])
-
-    monthly_rate_rows = []
+    rate_rows  = []
     for m in all_months:
-        ms = fm_sent(df_all, m)
-        mr = fm(df_scored_all, m)
-        t  = len(ms); r = len(mr)
-        monthly_rate_rows.append({"월": m, "발송건수": t, "응답건수": r, "응답률(%)": round(r/t*100,1) if t>0 else 0})
-    monthly_rate_df = pd.DataFrame(monthly_rate_rows)
+        ms = fm_sent(df_all, m);  mr = fm(df_scored_all, m)
+        t  = len(ms);             r  = len(mr)
+        rate_rows.append({"월": m, "발송건수": t, "응답건수": r,
+                          "응답률(%)": round(r / t * 100, 1) if t > 0 else 0})
+    monthly_rate_df = pd.DataFrame(rate_rows)
 
-    score_cols = [c for c in ["친절점수","만족점수","최종점수"] if c in df_scored_all.columns]
-    monthly_score_rows = []
+    score_cols  = [c for c in ["친절점수","만족점수","최종점수"] if c in df_scored_all.columns]
+    score_rows_ = []
     for m in all_months:
-        mr = fm(df_scored_all, m)
-        row = {"월": m}
+        mr    = fm(df_scored_all, m)
+        row_d = {"월": m}
         for sc in score_cols:
-            row[sc] = round(mr[sc].mean(), 1) if mr[sc].notna().any() else None
-        monthly_score_rows.append(row)
-    monthly_score_df = pd.DataFrame(monthly_score_rows)
-
+            row_d[sc] = round(mr[sc].mean(), 1) if mr[sc].notna().any() else None
+        score_rows_.append(row_d)
+    monthly_score_df = pd.DataFrame(score_rows_)
     return monthly_rate_df, monthly_score_df
 
 
 # ══════════════════════════════════════════════════════════════════
-# 10. 페이지들
+# 13. 페이지 구현
 # ══════════════════════════════════════════════════════════════════
-def page_overview(df_all, df_scored, df_scored_all, available_months, target_month, selected_date, selected_week):
-    st.markdown('<div class="section-title">개요</div>', unsafe_allow_html=True)
 
-    df_m        = fm(df_scored,     target_month)
-    df_m_kpi    = fm(df_scored_all, target_month)
-    df_m_all    = fm_sent(df_all,   target_month)
+# ── 13-1. 개요 ──────────────────────────────────────────────────
+def page_overview(df_all, df_scored, df_scored_all, available_months,
+                  target_month, selected_date, selected_week):
 
-    sorted_m = sorted([m for m in available_months if m <= target_month]) if target_month else []
-    prev_m   = sorted_m[-2] if len(sorted_m) >= 2 else None
+    page_header("대시보드 개요",
+                f"월: {target_month}  |  일자: {selected_date or '-'}  |  주차: {selected_week or '-'}")
+
+    df_m     = fm(df_scored,     target_month)
+    df_m_kpi = fm(df_scored_all, target_month)
+    df_m_all = fm_sent(df_all,   target_month)
+
+    sorted_m    = sorted([m for m in available_months if m <= target_month]) if target_month else []
+    prev_m      = sorted_m[-2] if len(sorted_m) >= 2 else None
     df_prev_all = fm_sent(df_all, prev_m)   if prev_m else pd.DataFrame()
     df_prev_kpi = fm(df_scored_all, prev_m) if prev_m else pd.DataFrame()
 
     total_sent   = len(df_m_all)
     total_scored = len(df_m_kpi)
-    resp_rate    = round(total_scored/total_sent*100,1) if total_sent>0 else 0
+    resp_rate    = round(total_scored / total_sent * 100, 1) if total_sent > 0 else 0
 
-    prev_sent   = len(df_prev_all) if not df_prev_all.empty else None
-    prev_scored = len(df_prev_kpi) if not df_prev_kpi.empty else None
-    prev_rate   = round(prev_scored/prev_sent*100,1) if prev_sent and prev_scored else None
+    prev_sent   = len(df_prev_all)  if not df_prev_all.empty  else None
+    prev_scored = len(df_prev_kpi)  if not df_prev_kpi.empty  else None
+    prev_rate   = round(prev_scored / prev_sent * 100, 1) if prev_sent and prev_scored else None
 
-    avg_final = safe_mean(df_m_kpi, "최종점수")
-    avg_kind  = safe_mean(df_m_kpi, "친절점수")
-    avg_satis = safe_mean(df_m_kpi, "만족점수")
+    avg_final  = safe_mean(df_m_kpi, "최종점수")
+    avg_kind   = safe_mean(df_m_kpi, "친절점수")
+    avg_satis  = safe_mean(df_m_kpi, "만족점수")
     prev_final = safe_mean(df_prev_kpi, "최종점수") if not df_prev_kpi.empty else None
 
     _, d_sent_str  = calc_mom(total_sent,   prev_sent,   is_pp=False)
@@ -830,53 +1153,66 @@ def page_overview(df_all, df_scored, df_scored_all, available_months, target_mon
     _, d_rate_str  = calc_mom(resp_rate,    prev_rate,   is_pp=True)
     _, d_score_str = calc_mom(avg_final,    prev_final,  is_pp=False)
 
-    neg_cnt = len(df_m_kpi[df_m_kpi["긍정부정"]=="부정"]) if "긍정부정" in df_m_kpi.columns else 0
+    neg_cnt = len(df_m_kpi[df_m_kpi["긍정부정"] == "부정"]) if "긍정부정" in df_m_kpi.columns else 0
     gap_cnt = len(detect_gaps(df_m_kpi))
 
-    c1,c2,c3,c4 = st.columns(4)
-    with c1: kpi_card("발송건수", f"{total_sent:,}건", d_sent_str, dcol(d_sent_str))
-    with c2: kpi_card("응답건수", f"{total_scored:,}건", d_resp_str, dcol(d_resp_str))
-    with c3: kpi_card("응답률", f"{resp_rate}%", d_rate_str, dcol(d_rate_str))
-    with c4: kpi_card("최종점수", "-" if avg_final is None else f"{avg_final}점", d_score_str, dcol(d_score_str))
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: kpi_card("발송건수",  f"{total_sent:,}건",              d_sent_str,  dcol(d_sent_str))
+    with c2: kpi_card("응답건수",  f"{total_scored:,}건",            d_resp_str,  dcol(d_resp_str))
+    with c3: kpi_card("응답률",    f"{resp_rate}%",                  d_rate_str,  dcol(d_rate_str))
+    with c4: kpi_card("최종점수",  "-" if avg_final is None else f"{avg_final}점", d_score_str, dcol(d_score_str))
 
-    c5,c6,c7,c8 = st.columns(4)
-    with c5: kpi_card("친절점수", "-" if avg_kind is None else f"{avg_kind}점")
-    with c6: kpi_card("만족점수", "-" if avg_satis is None else f"{avg_satis}점")
-    with c7: kpi_card("부정응답", f"{neg_cnt:,}건", "-", C_RED)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    c5, c6, c7, c8 = st.columns(4)
+    with c5: kpi_card("친절점수",       "-" if avg_kind  is None else f"{avg_kind}점")
+    with c6: kpi_card("만족점수",       "-" if avg_satis is None else f"{avg_satis}점")
+    with c7: kpi_card("부정응답",       f"{neg_cnt:,}건", "-", C_RED)
     with c8: kpi_card("점수갭(20점↑)", f"{gap_cnt:,}건", "-", C_AMBER)
 
-    st.markdown("")
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    # 트렌드
+    # 트렌드 차트
     monthly_rate_df, monthly_score_df = compute_monthly_trends(df_all, df_scored_all)
-    t1, t2 = st.columns([1,1])
+    t1, t2 = st.columns(2)
     with t1:
-        st.markdown('<div class="section-title">응답률 변화 트렌드</div>', unsafe_allow_html=True)
+        section_title("응답률 변화 트렌드", "📈")
         if monthly_rate_df.empty:
             st.caption("데이터 없음")
         else:
-            fig = px.line(monthly_rate_df, x="월", y="응답률(%)", markers=True)
-            fig.update_layout(height=320, margin=dict(l=10,r=10,t=10,b=10))
+            fig = px.line(monthly_rate_df, x="월", y="응답률(%)", markers=True,
+                          color_discrete_sequence=[C_BLUE])
+            fig.update_traces(line_width=2.5, marker_size=8)
+            fig.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10),
+                              plot_bgcolor="white", paper_bgcolor="white")
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(showgrid=True, gridcolor=C_BORDER)
             st.plotly_chart(fig, use_container_width=True)
 
     with t2:
-        st.markdown('<div class="section-title">월별 친절·만족·최종 점수 추이</div>', unsafe_allow_html=True)
+        section_title("월별 친절·만족·최종 점수 추이", "📊")
         if monthly_score_df.empty:
             st.caption("데이터 없음")
         else:
-            mdf = monthly_score_df.melt(id_vars=["월"], value_vars=[c for c in ["친절점수","만족점수","최종점수"] if c in monthly_score_df.columns],
-                                        var_name="지표", value_name="점수")
-            fig = px.line(mdf, x="월", y="점수", color="지표", markers=True)
-            fig.update_layout(height=320, margin=dict(l=10,r=10,t=10,b=10))
+            mdf = monthly_score_df.melt(
+                id_vars=["월"],
+                value_vars=[c for c in ["친절점수","만족점수","최종점수"] if c in monthly_score_df.columns],
+                var_name="지표", value_name="점수")
+            fig = px.line(mdf, x="월", y="점수", color="지표", markers=True,
+                          color_discrete_map={"친절점수": C_AMBER,"만족점수": C_GREEN,"최종점수": C_BLUE})
+            fig.update_traces(line_width=2.5, marker_size=7)
+            fig.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10),
+                              plot_bgcolor="white", paper_bgcolor="white",
+                              legend=dict(orientation="h", y=-0.2))
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(showgrid=True, gridcolor=C_BORDER)
             st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("")
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # 채널 + 감성 + Action
-    b1, b2, b3 = st.columns([1,1,1.2])
-
+    # 채널별 + 긍정부정 + Action
+    b1, b2, b3 = st.columns([1, 1, 1.3])
     with b1:
-        st.markdown('<div class="section-title">채널별 응답률</div>', unsafe_allow_html=True)
+        section_title("채널별 응답률", "📡")
         if "채널_구분" in df_m_all.columns:
             ch_rate = calc_response_rate(df_m_all, df_m_kpi, "채널_구분")
             st.dataframe(ch_rate, use_container_width=True, hide_index=True)
@@ -884,234 +1220,478 @@ def page_overview(df_all, df_scored, df_scored_all, available_months, target_mon
             st.caption("채널 컬럼 없음")
 
     with b2:
-        st.markdown('<div class="section-title">긍정/중립/부정 분포</div>', unsafe_allow_html=True)
+        section_title("긍정/부정 분포", "😊")
         if "긍정부정" in df_m_kpi.columns:
             s = df_m_kpi["긍정부정"].value_counts().reset_index()
-            s.columns = ["감성","건수"]
-            fig = px.pie(s, names="감성", values="건수", hole=0.55,
-                         color="감성", color_discrete_map={"긍정":C_GREEN,"중립":C_AMBER,"부정":C_RED})
-            fig.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10), legend_title_text="")
+            s.columns = ["긍정/부정","건수"]
+            fig = px.pie(s, names="긍정/부정", values="건수", hole=0.55,
+                         color="긍정/부정",
+                         color_discrete_map={"긍정": C_GREEN,"중립": C_AMBER,"부정": C_RED})
+            fig.update_layout(height=280, margin=dict(l=0,r=0,t=0,b=0), legend_title_text="")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.caption("감성 컬럼 없음")
+            st.caption("긍정/부정 컬럼 없음")
 
     with b3:
-        st.markdown('<div class="section-title">즉시 조치 필요</div>', unsafe_allow_html=True)
+        section_title("즉시 조치 필요", "⚠️")
         act = action_needed(df_m, df_m_all)
         if act.empty:
             st.success("특이사항 없음")
         else:
             st.dataframe(act, use_container_width=True, hide_index=True)
 
+    # 채널별 월별 추이
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    section_title("채널별 월별 추이 (발송/응답/점수)", "📅")
+    all_months_list = sorted([m for m in df_scored_all["회신월_정제"].dropna().unique()
+                               if m != "미확인"]) if "회신월_정제" in df_scored_all.columns else []
+    ch_trend = build_channel_monthly_trend(df_all, df_scored_all, all_months_list)
+    if ch_trend:
+        tabs = st.tabs(list(ch_trend.keys()))
+        for tab, (ch_name, trend_df) in zip(tabs, ch_trend.items()):
+            with tab:
+                if not trend_df.empty:
+                    st.dataframe(trend_df, use_container_width=True, hide_index=True)
 
+
+# ── 13-2. 일자·주차 ──────────────────────────────────────────────
 def page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week):
-    st.markdown('<div class="section-title">일자 / 주차 리포트</div>', unsafe_allow_html=True)
+    page_header("일자 / 주차 리포트",
+                f"선택 날짜: {selected_date or '-'}  |  선택 주차: {selected_week or '-'}")
 
-    # Daily
-    st.subheader("DAILY")
-    if selected_date:
-        df_day_all = filter_by_date_sent(df_all, selected_date)
-        df_day_kpi = filter_by_date(df_scored_all, selected_date, date_col="회신일")
-        if df_day_kpi.empty:
-            st.warning("선택 일자에 응답 데이터가 없습니다.")
+    tab_daily, tab_weekly = st.tabs(["📅 DAILY", "📆 WEEKLY"])
+
+    # ── DAILY ──
+    with tab_daily:
+        if not selected_date:
+            st.info("사이드바에서 일자를 선택하세요.")
         else:
-            st.write("채널별 응답률")
-            st.dataframe(calc_response_rate(df_day_all, df_day_kpi, "채널_구분"), use_container_width=True, hide_index=True)
+            df_day_all = filter_by_date_sent(df_all, selected_date)
+            df_day_kpi = filter_by_date(df_scored_all, selected_date, date_col="회신일")
+            if "긍정부정" not in df_day_kpi.columns and not df_day_kpi.empty:
+                df_day_kpi = add_sentiment_column(df_day_kpi)
 
-            st.write("감성 분포")
-            st.dataframe(sentiment_summary(df_day_kpi), use_container_width=True, hide_index=True)
-
-            neg = df_day_kpi[df_day_kpi["긍정부정"]=="부정"] if "긍정부정" in df_day_kpi.columns else pd.DataFrame()
-            st.write("부정 VOC")
-            if neg.empty:
-                st.caption("없음")
+            if df_day_kpi.empty:
+                st.warning(f"'{selected_date}' 에 해당하는 응답 데이터가 없습니다.")
             else:
-                cols = [c for c in ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"] if c in neg.columns]
-                st.dataframe(neg[cols], use_container_width=True, hide_index=True)
-    else:
-        st.caption("사이드바에서 일자를 선택하세요.")
+                # KPI
+                total_sent   = len(df_day_all)
+                total_scored = len(df_day_kpi)
+                resp_rate    = round(total_scored / total_sent * 100, 1) if total_sent > 0 else 0
+                avg_final    = safe_mean(df_day_kpi, "최종점수")
+                avg_kind     = safe_mean(df_day_kpi, "친절점수")
+                avg_satis    = safe_mean(df_day_kpi, "만족점수")
+                neg_cnt      = len(df_day_kpi[df_day_kpi["긍정부정"] == "부정"]) if "긍정부정" in df_day_kpi.columns else 0
 
-    st.divider()
+                c1,c2,c3,c4,c5,c6 = st.columns(6)
+                with c1: kpi_card("발송건수",  f"{total_sent:,}건")
+                with c2: kpi_card("응답건수",  f"{total_scored:,}건")
+                with c3: kpi_card("응답률",    f"{resp_rate}%",
+                                  delta_color=C_GREEN if resp_rate >= 20 else C_RED)
+                with c4: kpi_card("최종점수",  "-" if avg_final is None else f"{avg_final}점")
+                with c5: kpi_card("친절/만족",
+                                  f"{avg_kind or '-'} / {avg_satis or '-'}")
+                with c6: kpi_card("부정응답",  f"{neg_cnt}건", delta_color=C_RED)
 
-    # Weekly
-    st.subheader("WEEKLY")
-    if selected_week:
-        df_week_all = filter_by_week_sent(df_all, selected_week)
-        df_week_kpi = filter_by_week(df_scored_all, selected_week, week_col="회신주차_정제")
-        if df_week_kpi.empty:
-            st.warning("선택 주차에 응답 데이터가 없습니다.")
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                d1, d2 = st.columns(2)
+
+                with d1:
+                    section_title("채널별 응답률 및 점수", "📡")
+                    ch_rate_d  = calc_response_rate(df_day_all, df_day_kpi, "채널_구분")
+                    ch_score_d = pivot_avg(df_day_kpi, "채널_구분")
+                    if not ch_score_d.empty and "채널_구분" in ch_score_d.columns:
+                        ch_d = ch_rate_d.merge(ch_score_d.rename(columns={"채널_구분":"구분"}),
+                                               on="구분", how="left")
+                        ch_d = ch_d.loc[:, ~ch_d.columns.duplicated()]
+                    else:
+                        ch_d = ch_rate_d
+                    st.dataframe(ch_d, use_container_width=True, hide_index=True)
+
+                    section_title("긍정/부정 분포", "😊")
+                    st.dataframe(sentiment_summary(df_day_kpi), use_container_width=True, hide_index=True)
+
+                with d2:
+                    section_title("브랜드별 평균 점수", "🏷️")
+                    if "브랜드" in df_day_kpi.columns:
+                        st.dataframe(pivot_avg(df_day_kpi, "브랜드"),
+                                     use_container_width=True, hide_index=True)
+
+                    section_title("상담사별 점수 (재직자)", "👤")
+                    if "상담사" in df_day_kpi.columns:
+                        st.dataframe(pivot_avg(df_day_kpi, "상담사", agent_filter=True),
+                                     use_container_width=True, hide_index=True)
+
+                # 부정 VOC
+                if "긍정부정" in df_day_kpi.columns:
+                    neg_d = df_day_kpi[df_day_kpi["긍정부정"] == "부정"]
+                    if not neg_d.empty:
+                        section_title(f"부정 응답 상세 ({len(neg_d)}건)", "⚠️")
+                        cols = get_display_cols(neg_d, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"])
+                        st.dataframe(neg_d[cols], use_container_width=True, hide_index=True)
+
+                # 전체 목록
+                section_title("전체 응답 목록 (일자)", "📋")
+                preferred = ["회신일","상담사","브랜드","채널_구분","상담유형대",
+                             "친절점수","만족점수","최종점수","주관식","긍정부정"]
+                cols = get_display_cols(df_day_kpi, preferred)
+                st.dataframe(df_day_kpi[cols].reset_index(drop=True),
+                             use_container_width=True, hide_index=True)
+
+    # ── WEEKLY ──
+    with tab_weekly:
+        if not selected_week:
+            st.info("사이드바에서 주차를 선택하세요.")
         else:
-            st.write("채널별 응답률")
-            st.dataframe(calc_response_rate(df_week_all, df_week_kpi, "채널_구분"), use_container_width=True, hide_index=True)
+            df_week_all = filter_by_week_sent(df_all, selected_week)
+            df_week_kpi = filter_by_week(df_scored_all, selected_week, week_col="회신주차_정제")
+            if "긍정부정" not in df_week_kpi.columns and not df_week_kpi.empty:
+                df_week_kpi = add_sentiment_column(df_week_kpi)
 
-            st.write("키워드 TOP 20")
-            kws = extract_keywords(df_week_kpi, 20)
-            if kws:
-                st.dataframe(pd.DataFrame(kws, columns=["키워드","빈도"]), use_container_width=True, hide_index=True)
+            if df_week_kpi.empty:
+                st.warning(f"'{selected_week}' 에 해당하는 응답 데이터가 없습니다.")
             else:
-                st.caption("키워드 없음")
-    else:
-        st.caption("사이드바에서 주차를 선택하세요.")
+                # KPI
+                total_sent   = len(df_week_all)
+                total_scored = len(df_week_kpi)
+                resp_rate    = round(total_scored / total_sent * 100, 1) if total_sent > 0 else 0
+                avg_final    = safe_mean(df_week_kpi, "최종점수")
+                avg_kind     = safe_mean(df_week_kpi, "친절점수")
+                avg_satis    = safe_mean(df_week_kpi, "만족점수")
+                neg_cnt      = len(df_week_kpi[df_week_kpi["긍정부정"] == "부정"]) if "긍정부정" in df_week_kpi.columns else 0
+                gap_cnt      = len(detect_gaps(df_week_kpi))
+
+                c1,c2,c3,c4,c5,c6 = st.columns(6)
+                with c1: kpi_card("발송건수",   f"{total_sent:,}건")
+                with c2: kpi_card("응답건수",   f"{total_scored:,}건")
+                with c3: kpi_card("응답률",     f"{resp_rate}%",
+                                  delta_color=C_GREEN if resp_rate >= 20 else C_RED)
+                with c4: kpi_card("최종점수",   "-" if avg_final is None else f"{avg_final}점")
+                with c5: kpi_card("부정응답",   f"{neg_cnt}건", delta_color=C_RED)
+                with c6: kpi_card("점수갭",     f"{gap_cnt}건", delta_color=C_AMBER)
+
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+                # 3주 트렌드
+                section_title("3주 트렌드 (선택주차 + 이전 2주)", "📈")
+                week_trend = build_week_trend_data(df_all, df_scored_all, selected_week)
+                labels     = week_trend["labels"]
+                rate_vals  = week_trend["rate_vals"]
+                sc_rows    = week_trend["score_rows"]
+                sc_keys    = [k for k in ["친절점수","만족점수","최종점수"] if k in sc_rows]
+
+                # 트렌드 요약 테이블
+                trend_rows = []
+                for i, lbl in enumerate(labels):
+                    r = {"주차": lbl, "응답률(%)": rate_vals[i] if rate_vals[i] is not None else "-"}
+                    for k in sc_keys:
+                        r[k] = sc_rows[k][i] if i < len(sc_rows[k]) and sc_rows[k][i] is not None else "-"
+                    trend_rows.append(r)
+                st.dataframe(pd.DataFrame(trend_rows), use_container_width=True, hide_index=True)
+
+                # 트렌드 차트
+                wt1, wt2 = st.columns(2)
+                with wt1:
+                    rr_df = pd.DataFrame({"주차": labels, "응답률(%)": rate_vals}).dropna()
+                    if not rr_df.empty:
+                        fig = px.line(rr_df, x="주차", y="응답률(%)", markers=True,
+                                      title="주차별 응답률 트렌드",
+                                      color_discrete_sequence=[C_BLUE])
+                        fig.update_traces(line_width=2.5, marker_size=10)
+                        fig.update_layout(height=280, margin=dict(l=10,r=10,t=30,b=10),
+                                          plot_bgcolor="white", paper_bgcolor="white")
+                        st.plotly_chart(fig, use_container_width=True)
+
+                with wt2:
+                    sc_plot = [{"주차": labels[i], "지표": k, "점수": sc_rows[k][i]}
+                               for k in sc_keys for i in range(len(labels))
+                               if sc_rows[k][i] is not None]
+                    if sc_plot:
+                        sc_df = pd.DataFrame(sc_plot)
+                        fig   = px.line(sc_df, x="주차", y="점수", color="지표", markers=True,
+                                        title="주차별 점수 트렌드",
+                                        color_discrete_map={"친절점수": C_AMBER,"만족점수": C_GREEN,"최종점수": C_BLUE})
+                        fig.update_traces(line_width=2.5, marker_size=10)
+                        fig.update_layout(height=280, margin=dict(l=10,r=10,t=30,b=10),
+                                          plot_bgcolor="white", paper_bgcolor="white",
+                                          legend=dict(orientation="h", y=-0.3))
+                        st.plotly_chart(fig, use_container_width=True)
+
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                w1, w2 = st.columns(2)
+
+                with w1:
+                    section_title("채널별 응답률 및 점수", "📡")
+                    ch_rate_w  = calc_response_rate(df_week_all, df_week_kpi, "채널_구분")
+                    ch_score_w = pivot_avg(df_week_kpi, "채널_구분")
+                    if not ch_score_w.empty and "채널_구분" in ch_score_w.columns:
+                        ch_w = ch_rate_w.merge(ch_score_w.rename(columns={"채널_구분":"구분"}),
+                                               on="구분", how="left")
+                        ch_w = ch_w.loc[:, ~ch_w.columns.duplicated()]
+                    else:
+                        ch_w = ch_rate_w
+                    st.dataframe(ch_w, use_container_width=True, hide_index=True)
+
+                    section_title("긍정/부정 분포", "😊")
+                    st.dataframe(sentiment_summary(df_week_kpi), use_container_width=True, hide_index=True)
+
+                with w2:
+                    section_title("브랜드별 평균 점수", "🏷️")
+                    if "브랜드" in df_week_kpi.columns:
+                        br_w = pivot_avg(df_week_kpi, "브랜드")
+                        st.dataframe(br_w, use_container_width=True, hide_index=True)
+
+                    section_title("상담사별 점수 (재직자)", "👤")
+                    if "상담사" in df_week_kpi.columns:
+                        ag_w = pivot_avg(df_week_kpi, "상담사", agent_filter=True)
+                        st.dataframe(ag_w, use_container_width=True, hide_index=True)
+
+                # 키워드
+                section_title("키워드 TOP 20 (주차)", "🔑")
+                kws = extract_keywords(df_week_kpi, 20)
+                if kws:
+                    kdf = pd.DataFrame(kws, columns=["키워드","빈도"])
+                    fig = px.bar(kdf, x="빈도", y="키워드", orientation="h",
+                                 color_discrete_sequence=[C_BLUE])
+                    fig.update_layout(height=480, margin=dict(l=10,r=10,t=10,b=10),
+                                      plot_bgcolor="white", paper_bgcolor="white")
+                    fig.update_yaxes(autorange="reversed")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                # 친절↔만족 갭
+                gap_w = detect_gaps(df_week_kpi)
+                if not gap_w.empty:
+                    section_title(f"친절↔만족 점수 갭 분석 ({len(gap_w)}건)", "⚠️")
+                    cols = get_display_cols(gap_w, ["상담사","브랜드","채널_구분",
+                                                    "친절점수","만족점수","최종점수","갭(친절-만족)","주관식"])
+                    st.dataframe(gap_w[cols], use_container_width=True, hide_index=True)
+
+                # 부정 VOC
+                if "긍정부정" in df_week_kpi.columns:
+                    neg_w = df_week_kpi[df_week_kpi["긍정부정"] == "부정"]
+                    if not neg_w.empty:
+                        section_title(f"부정 응답 상세 ({len(neg_w)}건)", "⚠️")
+                        cols = get_display_cols(neg_w, ["회신일","상담사","브랜드","채널_구분",
+                                                        "최종점수","주관식","긍정부정"])
+                        st.dataframe(neg_w[cols], use_container_width=True, hide_index=True)
+
+                # 전체 목록
+                section_title("전체 응답 목록 (주차)", "📋")
+                preferred_w = ["회신주차_정제","회신일","상담사","브랜드","채널_구분",
+                               "상담유형대","친절점수","만족점수","최종점수","주관식","긍정부정"]
+                cols = get_display_cols(df_week_kpi, preferred_w)
+                st.dataframe(df_week_kpi[cols].reset_index(drop=True),
+                             use_container_width=True, hide_index=True)
 
 
+# ── 13-3. 점수분석 ───────────────────────────────────────────────
 def page_scores(df_m):
-    st.markdown('<div class="section-title">점수 분석</div>', unsafe_allow_html=True)
+    page_header("점수 분석")
 
     for gcol, title, do_af in [
-        ("상담사",     "상담사별(재직/제외필터)", True),
-        ("브랜드",     "브랜드별",              False),
-        ("상담유형대", "상담유형(대)별",        False),
-        ("채널_구분",  "채널별",                False),
-        ("근속",       "근속별",                False),
+        ("상담사",     "상담사별 (재직/제외필터)", True),
+        ("브랜드",     "브랜드별",               False),
+        ("상담유형대", "상담유형(대)별",          False),
+        ("채널_구분",  "채널별",                 False),
+        ("근속",       "근속별",                 False),
     ]:
         if gcol not in df_m.columns:
             continue
-
-        st.subheader(title)
+        section_title(title, "📊")
         piv = pivot_avg(df_m, gcol, agent_filter=do_af)
         st.dataframe(piv, use_container_width=True, hide_index=True)
 
         if "최종점수" in df_m.columns:
-            src = _agent_filter(df_m) if do_af else df_m
-            grp = src.groupby(gcol)["최종점수"].mean().round(1).sort_values(ascending=False).head(30).reset_index()
+            src  = _agent_filter(df_m) if do_af else df_m
+            grp  = src.groupby(gcol)["최종점수"].mean().round(1).sort_values(ascending=False).head(30).reset_index()
             grp.columns = [gcol, "최종점수(평균)"]
-            fig = px.bar(grp, x=gcol, y="최종점수(평균)")
-            fig.update_layout(height=360, margin=dict(l=10,r=10,t=10,b=10))
+            fig = px.bar(grp, x=gcol, y="최종점수(평균)",
+                         color="최종점수(평균)",
+                         color_continuous_scale=["#DC2626","#FEF3C7","#059669"],
+                         range_color=[50, 100])
+            fig.update_layout(height=360, margin=dict(l=10,r=10,t=10,b=10),
+                              plot_bgcolor="white", paper_bgcolor="white",
+                              coloraxis_showscale=False)
+            fig.update_xaxes(showgrid=False)
             st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("⚠️ 친절↔만족 점수 갭(20점↑)")
+    section_title("친절↔만족 점수 갭 분석 (20점↑)", "⚠️")
     gap = detect_gaps(df_m)
     if gap.empty:
         st.caption("없음")
     else:
-        cols = [c for c in ["회신일","상담사","브랜드","채널_구분","친절점수","만족점수","최종점수","갭(친절-만족)","주관식"] if c in gap.columns]
+        cols = get_display_cols(gap, ["회신일","상담사","브랜드","채널_구분",
+                                      "친절점수","만족점수","최종점수","갭(친절-만족)","주관식"])
         st.dataframe(gap[cols], use_container_width=True, hide_index=True)
 
 
+# ── 13-4. 주관식분석 ────────────────────────────────────────────
 def page_verbatim(df_m):
-    st.markdown('<div class="section-title">주관식 분석</div>', unsafe_allow_html=True)
+    page_header("주관식 분석")
 
-    st.subheader("감성 분포")
-    sent = sentiment_summary(df_m)
-    st.dataframe(sent, use_container_width=True, hide_index=True)
+    section_title("긍정/부정 분포", "😊")
+    v1, v2 = st.columns([1, 1.5])
+    with v1:
+        sent = sentiment_summary(df_m)
+        st.dataframe(sent, use_container_width=True, hide_index=True)
+    with v2:
+        if "긍정부정" in df_m.columns:
+            s = df_m["긍정부정"].value_counts().reset_index()
+            s.columns = ["긍정/부정","건수"]
+            fig = px.pie(s, names="긍정/부정", values="건수", hole=0.55,
+                         color="긍정/부정",
+                         color_discrete_map={"긍정": C_GREEN,"중립": C_AMBER,"부정": C_RED})
+            fig.update_layout(height=260, margin=dict(l=0,r=0,t=0,b=0))
+            st.plotly_chart(fig, use_container_width=True)
 
-    if "긍정부정" in df_m.columns:
-        s = df_m["긍정부정"].value_counts().reset_index()
-        s.columns = ["감성","건수"]
-        fig = px.pie(s, names="감성", values="건수", hole=0.55,
-                     color="감성", color_discrete_map={"긍정":C_GREEN,"중립":C_AMBER,"부정":C_RED})
-        fig.update_layout(height=300, margin=dict(l=10,r=10,t=10,b=10), legend_title_text="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("키워드 TOP 20")
+    section_title("키워드 TOP 20", "🔑")
     kws = extract_keywords(df_m, 20)
     if kws:
         kdf = pd.DataFrame(kws, columns=["키워드","빈도"])
-        fig = px.bar(kdf, x="빈도", y="키워드", orientation="h")
-        fig.update_layout(height=520, margin=dict(l=10,r=10,t=10,b=10))
+        fig = px.bar(kdf, x="빈도", y="키워드", orientation="h",
+                     color_discrete_sequence=[C_BLUE])
+        fig.update_layout(height=520, margin=dict(l=10,r=10,t=10,b=10),
+                          plot_bgcolor="white", paper_bgcolor="white")
+        fig.update_yaxes(autorange="reversed")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.caption("키워드 없음(주관식 컬럼 확인)")
+        st.caption("키워드 없음 (주관식 컬럼 확인)")
 
-    st.subheader("부정 응답 상세")
+    section_title("부정 응답 상세", "⚠️")
     if "긍정부정" in df_m.columns:
-        neg = df_m[df_m["긍정부정"]=="부정"]
+        neg = df_m[df_m["긍정부정"] == "부정"]
         if neg.empty:
             st.caption("없음")
         else:
-            cols = [c for c in ["회신일","상담사","브랜드","채널_구분","최종점수","주관식"] if c in neg.columns]
+            cols = get_display_cols(neg, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식"])
             st.dataframe(neg[cols], use_container_width=True, hide_index=True)
 
-    st.subheader("전체 주관식 응답")
+    section_title("전체 주관식 응답", "📋")
     col = "주관식" if "주관식" in df_m.columns else None
     if col:
-        vbt = df_m[df_m[col].notna() & (df_m[col].astype(str).str.strip()!="")]
-        cols = [c for c in ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"] if c in vbt.columns]
+        vbt  = df_m[df_m[col].notna() & (df_m[col].astype(str).str.strip() != "")]
+        cols = get_display_cols(vbt, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"])
         st.dataframe(vbt[cols], use_container_width=True, hide_index=True)
     else:
         st.caption("주관식 컬럼 없음")
 
 
+# ── 13-5. 통합분석(히트맵) ───────────────────────────────────────
 def page_integrated(df_m):
-    st.markdown('<div class="section-title">통합 분석(히트맵)</div>', unsafe_allow_html=True)
+    page_header("통합 분석 (히트맵)")
 
-    def heatmap(df, idx, col, val, title, agent_filter=False):
+    def heatmap_section(df, idx, col_name, val, title, agent_filter=False, icon="🗺️"):
         src = _agent_filter(df) if agent_filter else df
-        if src.empty or idx not in src.columns or col not in src.columns or val not in src.columns:
-            st.caption(f"{title} : 데이터 없음")
+        if src.empty or idx not in src.columns or col_name not in src.columns or val not in src.columns:
             return
-        p = src.pivot_table(values=val, index=idx, columns=col, aggfunc="mean").round(1)
+        section_title(title, icon)
+        p = src.pivot_table(values=val, index=idx, columns=col_name, aggfunc="mean").round(1)
         if p.empty:
-            st.caption(f"{title} : 피벗 없음")
+            st.caption("데이터 없음")
             return
-        fig = px.imshow(p, text_auto=True, aspect="auto", color_continuous_scale=["#DC2626","#FEF3C7","#059669"])
-        fig.update_layout(height=520, margin=dict(l=10,r=10,t=30,b=10), title=title)
+        fig = px.imshow(p, text_auto=True, aspect="auto",
+                        color_continuous_scale=["#DC2626","#FEF3C7","#059669"],
+                        zmin=60, zmax=100)
+        fig.update_layout(height=max(380, len(p) * 38 + 80),
+                          margin=dict(l=10,r=10,t=10,b=10))
         st.plotly_chart(fig, use_container_width=True)
 
-    # 상담유형대 x 채널
-    if all(c in df_m.columns for c in ["상담유형대","채널_구분","최종점수"]):
-        heatmap(df_m, "상담유형대", "채널_구분", "최종점수", "상담유형(대) × 채널 만족도", agent_filter=False)
+    heatmap_section(df_m, "상담유형대", "채널_구분", "최종점수",
+                    "상담유형(대) × 채널 만족도", agent_filter=False, icon="🗺️")
 
-    # 상담사 x 채널(필터)
-    if all(c in df_m.columns for c in ["상담사","채널_구분","최종점수"]):
-        heatmap(df_m, "상담사", "채널_구분", "최종점수", "상담사 × 채널 만족도(재직/제외필터)", agent_filter=True)
+    heatmap_section(df_m, "상담사", "채널_구분", "최종점수",
+                    "상담사 × 채널 만족도 (재직자 기준)", agent_filter=True, icon="👤")
 
-    # 근속 x 채널
-    if all(c in df_m.columns for c in ["근속","채널_구분","최종점수"]):
-        heatmap(df_m, "근속", "채널_구분", "최종점수", "근속 × 채널 만족도", agent_filter=False)
+    # 상담사 × 문의유형 히트맵
+    inq_col = next((c for c in ["문의유형","상담유형대","상담유형중"] if c in df_m.columns), None)
+    if inq_col and "상담사" in df_m.columns and "최종점수" in df_m.columns:
+        heatmap_section(df_m, "상담사", inq_col, "최종점수",
+                        f"상담사 × {inq_col} 만족도 (재직자 기준)", agent_filter=True, icon="📋")
+
+    heatmap_section(df_m, "브랜드", "상담유형대", "최종점수",
+                    "브랜드 × 상담유형(대) 만족도", agent_filter=False, icon="🏷️")
+
+    if "근속" in df_m.columns:
+        heatmap_section(df_m, "근속", "채널_구분", "최종점수",
+                        "근속 × 채널 만족도", agent_filter=False, icon="📅")
+
+        section_title("근속별 평균 점수", "📊")
+        piv = pivot_avg(df_m, "근속")
+        st.dataframe(piv, use_container_width=True, hide_index=True)
 
 
+# ── 13-6. Action 필요 ───────────────────────────────────────────
 def page_action(df_m, df_m_all):
-    st.markdown('<div class="section-title">Action 필요</div>', unsafe_allow_html=True)
+    page_header("Action 필요")
 
     act = action_needed(df_m, df_m_all)
     if act.empty:
-        st.success("특이사항 없음")
+        st.success("✅ 특이사항 없음")
     else:
         st.dataframe(act, use_container_width=True, hide_index=True)
 
-    st.subheader("부정 응답 상세")
+    section_title("부정 응답 상세", "⚠️")
     if "긍정부정" in df_m.columns:
-        neg = df_m[df_m["긍정부정"]=="부정"]
+        neg = df_m[df_m["긍정부정"] == "부정"]
         if neg.empty:
             st.caption("없음")
         else:
-            cols = [c for c in ["회신일","상담사","브랜드","채널_구분","최종점수","주관식"] if c in neg.columns]
+            cols = get_display_cols(neg, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식"])
             st.dataframe(neg[cols], use_container_width=True, hide_index=True)
 
 
+# ── 13-7. 일별 상담사 성과 ──────────────────────────────────────
 def page_daily_agent(df_m):
-    st.markdown('<div class="section-title">일별 상담사 성과</div>', unsafe_allow_html=True)
+    page_header("일별 상담사 성과")
 
     df_v = _agent_filter(df_m)
     if df_v.empty or "회신일" not in df_v.columns or "상담사" not in df_v.columns or "최종점수" not in df_v.columns:
         st.warning("일별 상담사 성과 데이터가 부족합니다.")
         return
 
-    pivot = (df_v.groupby(["회신일","상담사"])["최종점수"].mean().round(1).unstack(fill_value=None))
-    if pivot.empty:
+    pivot_df = (df_v.groupby(["회신일","상담사"])["최종점수"]
+                    .mean().round(1).unstack(fill_value=None))
+    if pivot_df.empty:
         st.caption("피벗 데이터 없음")
         return
 
-    st.subheader("일자별 상담사 최종점수 트렌드")
-    p_long = pivot.reset_index().melt(id_vars=["회신일"], var_name="상담사", value_name="최종점수")
+    section_title("일자별 상담사 최종점수 트렌드", "📈")
+    p_long = pivot_df.reset_index().melt(id_vars=["회신일"], var_name="상담사", value_name="최종점수")
     p_long = p_long.dropna()
-    fig = px.line(p_long, x="회신일", y="최종점수", color="상담사", markers=True)
-    fig.update_layout(height=420, margin=dict(l=10,r=10,t=10,b=10))
+    fig = px.line(p_long, x="회신일", y="최종점수", color="상담사", markers=True,
+                  color_discrete_sequence=CHART_COLORS)
+    fig.update_layout(height=420, margin=dict(l=10,r=10,t=10,b=10),
+                      plot_bgcolor="white", paper_bgcolor="white",
+                      legend=dict(orientation="v", x=1.01))
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=True, gridcolor=C_BORDER)
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("상담사별 일평균 요약")
+    section_title("일자별 상담사 피벗 테이블", "📋")
+    pivot_disp = pivot_df.reset_index()
+    pivot_disp.columns.name = None
+    st.dataframe(pivot_disp, use_container_width=True, hide_index=True)
+
+    section_title("상담사별 성과 요약", "👤")
     daily_avg = (df_v.groupby("상담사")["최종점수"]
-                 .agg(["mean", "min", "max", "count"]).round(1).reset_index())
+                     .agg(["mean","min","max","count"]).round(1).reset_index())
     daily_avg.columns = ["상담사","평균점수","최저점수","최고점수","응답건수"]
     daily_avg["상태"] = daily_avg["평균점수"].apply(
         lambda x: "🔴 주의" if x < SCORE_CAUTION else ("🟡 관찰" if x < SCORE_GOOD else "🟢 양호"))
     daily_avg = daily_avg.sort_values("평균점수", ascending=False)
     st.dataframe(daily_avg, use_container_width=True, hide_index=True)
 
+    if "채널_구분" in df_v.columns:
+        section_title("일자별 채널별 응답 건수", "📡")
+        daily_ch = (df_v.groupby(["회신일","채널_구분"])["최종점수"]
+                        .count().unstack(fill_value=0).reset_index())
+        daily_ch.columns.name = None
+        st.dataframe(daily_ch, use_container_width=True, hide_index=True)
 
+
+# ── 13-8. 70점 미만 전체 ─────────────────────────────────────────
 def page_low_scores(df_scored_all, target_month=None):
-    st.markdown('<div class="section-title">70점 미만 전체</div>', unsafe_allow_html=True)
+    page_header("70점 미만 전체 목록")
 
     src = fm(df_scored_all, target_month) if target_month else df_scored_all.copy()
     if "최종점수" not in src.columns:
@@ -1123,87 +1703,271 @@ def page_low_scores(df_scored_all, target_month=None):
         st.success("70점 미만 데이터 없음")
         return
 
-    cols = [c for c in ["회신월_정제","회신일","상담사","브랜드","채널_구분","상담유형대","근속","친절점수","만족점수","최종점수","주관식","긍정부정"] if c in low.columns]
-    st.dataframe(low[cols], use_container_width=True, hide_index=True)
+    st.info(f"총 {len(low):,}건 | 평균점수: {low['최종점수'].mean():.1f}점")
+    preferred = ["회신월_정제","회신일","상담사","브랜드","채널_구분",
+                 "상담유형대","근속","친절점수","만족점수","최종점수","주관식","긍정부정"]
+    cols = get_display_cols(low, preferred)
+    st.dataframe(low[cols].reset_index(drop=True), use_container_width=True, hide_index=True)
+
+
+# ── 13-9. 검색 ──────────────────────────────────────────────────
+def page_search(df_scored_all, df_all):
+    page_header("검색", "상담KEY 또는 상담사 이름으로 원천 데이터를 검색합니다")
+
+    s1, s2 = st.columns([2, 1])
+    with s1:
+        search_query = st.text_input("🔍 검색어 입력",
+                                     placeholder="상담KEY 또는 상담사 이름을 입력하세요",
+                                     label_visibility="collapsed")
+    with s2:
+        search_type = st.selectbox("검색 유형",
+                                   ["상담KEY + 상담사 이름 (전체)","상담KEY만","상담사 이름만"],
+                                   label_visibility="collapsed")
+
+    if not search_query.strip():
+        st.info("검색어를 입력하면 해당 데이터를 바로 보여드립니다.")
+
+        # 최근 데이터 미리보기
+        section_title("전체 데이터 미리보기 (최근 50건)", "📋")
+        preferred = ["회신일","상담사","브랜드","채널_구분","상담유형대",
+                     "친절점수","만족점수","최종점수","주관식","긍정부정"]
+        cols = get_display_cols(df_scored_all, preferred)
+        st.dataframe(df_scored_all[cols].tail(50).reset_index(drop=True),
+                     use_container_width=True, hide_index=True)
+        return
+
+    q = search_query.strip()
+
+    # 검색 로직
+    mask = pd.Series([False] * len(df_scored_all), index=df_scored_all.index)
+
+    if search_type in ["상담KEY + 상담사 이름 (전체)", "상담KEY만"]:
+        if "상담KEY" in df_scored_all.columns:
+            mask = mask | df_scored_all["상담KEY"].astype(str).str.contains(q, case=False, na=False)
+
+    if search_type in ["상담KEY + 상담사 이름 (전체)", "상담사 이름만"]:
+        if "상담사" in df_scored_all.columns:
+            mask = mask | df_scored_all["상담사"].astype(str).str.contains(q, case=False, na=False)
+
+    result = df_scored_all[mask].copy()
+
+    if result.empty:
+        st.warning(f"'{q}' 에 해당하는 데이터가 없습니다.")
+        return
+
+    st.success(f"✅ '{q}' 검색 결과: **{len(result):,}건**")
+
+    # 검색 결과 KPI
+    if len(result) > 0:
+        k1, k2, k3, k4, k5 = st.columns(5)
+        avg_f = safe_mean(result, "최종점수")
+        avg_k = safe_mean(result, "친절점수")
+        avg_s = safe_mean(result, "만족점수")
+        neg_c = len(result[result["긍정부정"] == "부정"]) if "긍정부정" in result.columns else 0
+        with k1: kpi_card("검색 결과",  f"{len(result):,}건")
+        with k2: kpi_card("최종점수",   "-" if avg_f is None else f"{avg_f}점")
+        with k3: kpi_card("친절점수",   "-" if avg_k is None else f"{avg_k}점")
+        with k4: kpi_card("만족점수",   "-" if avg_s is None else f"{avg_s}점")
+        with k5: kpi_card("부정응답",   f"{neg_c}건", delta_color=C_RED)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # 검색 결과 테이블
+    preferred = ["회신월_정제","회신일","상담사","브랜드","채널_구분",
+                 "상담유형대","친절점수","만족점수","최종점수","주관식","긍정부정"]
+    cols = get_display_cols(result, preferred)
+    st.dataframe(result[cols].reset_index(drop=True),
+                 use_container_width=True, hide_index=True)
+
+    # 긍정/부정 분포
+    if "긍정부정" in result.columns and result["긍정부정"].notna().any():
+        sr1, sr2 = st.columns(2)
+        with sr1:
+            section_title("긍정/부정 분포", "😊")
+            st.dataframe(sentiment_summary(result), use_container_width=True, hide_index=True)
+        with sr2:
+            section_title("점수 분포", "📊")
+            if "최종점수" in result.columns and result["최종점수"].notna().any():
+                fig = px.histogram(result, x="최종점수", nbins=20,
+                                   color_discrete_sequence=[C_BLUE])
+                fig.update_layout(height=240, margin=dict(l=10,r=10,t=10,b=10),
+                                  plot_bgcolor="white", paper_bgcolor="white")
+                st.plotly_chart(fig, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════
-# 11. Streamlit App
+# 14. 사이드바 네비게이션
+# ══════════════════════════════════════════════════════════════════
+MENU_ITEMS = [
+    {"key": "개요",           "icon": "🏠", "label": "대시보드"},
+    {"key": "일자·주차",      "icon": "📅", "label": "일자·주차"},
+    {"key": "점수분석",       "icon": "📊", "label": "점수분석"},
+    {"key": "주관식분석",     "icon": "💬", "label": "주관식분석"},
+    {"key": "통합분석(히트맵)","icon": "🗺️", "label": "통합분석(히트맵)"},
+    {"key": "Action필요",     "icon": "⚠️", "label": "Action 필요"},
+    {"key": "일별상담사성과", "icon": "👤", "label": "일별 상담사 성과"},
+    {"key": "70점미만_전체",  "icon": "🔴", "label": "70점 미만 전체"},
+    {"key": "검색",           "icon": "🔍", "label": "검색"},
+]
+
+
+def render_sidebar_nav(current_menu: str) -> str:
+    """사이드바 네비게이션 렌더링. 선택된 메뉴 키 반환."""
+    # 브랜드 영역
+    st.sidebar.markdown("""
+    <div class="sb-brand">
+      <div class="sb-brand-icon">C</div>
+      <div>
+        <div class="sb-brand-text">CSAT Dashboard</div>
+        <div class="sb-brand-sub">고객 만족도 분석</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 메뉴 라디오 (숨겨진 실제 컨트롤)
+    menu_labels = [f"{item['icon']}  {item['label']}" for item in MENU_ITEMS]
+    menu_keys   = [item["key"] for item in MENU_ITEMS]
+
+    current_idx = next((i for i, item in enumerate(MENU_ITEMS) if item["key"] == current_menu), 0)
+
+    st.sidebar.markdown('<div class="sb-section-label">메뉴</div>', unsafe_allow_html=True)
+
+    selected_label = st.sidebar.radio(
+        "nav",
+        menu_labels,
+        index=current_idx,
+        label_visibility="collapsed",
+    )
+    selected_key = menu_keys[menu_labels.index(selected_label)]
+
+    st.sidebar.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+
+    # 새로고침 버튼
+    if st.sidebar.button("🔄  구글시트 새로고침", use_container_width=True):
+        load_from_gsheets.clear()
+        st.rerun()
+
+    return selected_key
+
+
+# ══════════════════════════════════════════════════════════════════
+# 15. Streamlit App 메인
 # ══════════════════════════════════════════════════════════════════
 def main():
-    st.set_page_config(page_title="CSAT Dashboard", layout="wide")
+    st.set_page_config(
+        page_title="CSAT Dashboard",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
     inject_css()
 
-    st.sidebar.markdown("## CSAT Dashboard")
-    menu = st.sidebar.radio(
-        "메뉴",
-        ["개요","일자·주차","점수분석","주관식분석","통합분석(히트맵)","Action필요","일별상담사성과","70점미만_전체"]
-    )
+    # ── 세션 상태 초기화 ──
+    if "menu" not in st.session_state:
+        st.session_state["menu"] = "개요"
 
-    st.sidebar.markdown("---")
-    if st.sidebar.button("구글시트 새로고침"):
-        load_from_gsheets.clear()
+    # ── 사이드바 네비게이션 ──
+    selected_menu = render_sidebar_nav(st.session_state["menu"])
+    st.session_state["menu"] = selected_menu
 
-    # 데이터 로드
+    # ── 데이터 로드 ──
     try:
         df_raw = load_from_gsheets()
     except Exception as e:
         st.error("구글시트 연결 실패: 공개 설정(링크 공개)과 Secrets를 확인하세요.")
         st.exception(e)
-        st.info("공개 구글시트 연결 가이드: https://docs.streamlit.io/develop/tutorials/databases/public-gsheet")
         return
 
-    df_all, df_active, df_scored, df_scored_all, available_months, retired_agents = prepare_data(df_raw)
+    # 데이터 준비 (캐시)
+    @st.cache_data(ttl=600, show_spinner="데이터 처리 중...")
+    def _prepare(raw_json: str):
+        import json
+        df_r = pd.read_json(raw_json, orient="split")
+        return prepare_data_from_df(df_r)
 
-    # 기간 선택
-    st.sidebar.markdown("### 기간 선택")
-    if available_months:
-        target_month = st.sidebar.selectbox("월(필수)", available_months, index=len(available_months)-1)
-    else:
-        target_month = st.sidebar.text_input("월(예: 2026-01)", value="")
+    try:
+        raw_json = df_raw.to_json(orient="split", date_format="iso")
+        (df_all, df_active, df_scored, df_scored_all,
+         available_months, retired_agents) = _prepare(raw_json)
+    except Exception as e:
+        st.error(f"데이터 처리 오류: {e}")
+        st.exception(e)
+        return
 
-    # 일자/주차 목록
+    # ── 기간 선택 (사이드바) ──
     MISSING_SET = {"","nan","NaT","None","NaN","<NA>","NA"}
-    available_dates = sorted([str(d) for d in df_scored_all.get("회신일", pd.Series([])).dropna().unique() if str(d) not in MISSING_SET]) \
-                      if "회신일" in df_scored_all.columns else []
-    week_col = "회신주차_정제" if "회신주차_정제" in df_scored_all.columns else "회신주차"
-    available_weeks = sorted([str(w) for w in df_scored_all.get(week_col, pd.Series([])).dropna().unique() if str(w) not in MISSING_SET]) \
-                      if week_col in df_scored_all.columns else []
 
-    selected_date = st.sidebar.selectbox("일자(선택)", [""] + available_dates, index=0)
+    st.sidebar.markdown('<div class="sb-section-label">기간 선택</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-period-area">', unsafe_allow_html=True)
+
+    if available_months:
+        target_month = st.sidebar.selectbox(
+            "월(필수)", available_months,
+            index=len(available_months) - 1,
+            key="sel_month")
+    else:
+        target_month = st.sidebar.text_input("월(예: 2026-01)", value="", key="sel_month_txt")
+
+    available_dates = sorted([
+        str(d) for d in df_scored_all.get("회신일", pd.Series([])).dropna().unique()
+        if str(d) not in MISSING_SET
+    ]) if "회신일" in df_scored_all.columns else []
+
+    week_col = "회신주차_정제" if "회신주차_정제" in df_scored_all.columns else "회신주차"
+    available_weeks = sorted([
+        str(w) for w in df_scored_all.get(week_col, pd.Series([])).dropna().unique()
+        if str(w) not in MISSING_SET
+    ]) if week_col in df_scored_all.columns else []
+
+    selected_date = st.sidebar.selectbox("일자(선택)", [""] + available_dates, index=0, key="sel_date")
     selected_date = selected_date or None
-    selected_week = st.sidebar.selectbox("주차(선택)", [""] + available_weeks, index=0)
+
+    selected_week = st.sidebar.selectbox("주차(선택)", [""] + available_weeks, index=0, key="sel_week")
     selected_week = selected_week or None
 
-    st.sidebar.markdown("---")
-    st.sidebar.caption(f"주의 < {SCORE_CAUTION} / 양호 ≥ {SCORE_GOOD}")
-    st.sidebar.caption(f"제외 상담사: {', '.join(sorted(EXCLUDED_AGENTS))}")
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown(f"""
+    <div style="padding: 8px 16px; font-size: 10px; color: {C_GRAY};">
+      주의 &lt; {SCORE_CAUTION} / 양호 ≥ {SCORE_GOOD}<br>
+      제외: {', '.join(sorted(EXCLUDED_AGENTS))}
+    </div>
+    """, unsafe_allow_html=True)
 
-    # 상단
-    st.markdown("## 고객 만족도 대시보드 (센터장)")
-    st.caption(f"월: {target_month} | 일자: {selected_date or '-'} | 주차: {selected_week or '-'}")
-
-    # 월 기준 df_m (재직자 scored)
+    # ── 월 기준 df_m ──
     df_m     = fm(df_scored, target_month)
     df_m_all = fm_sent(df_all, target_month)
 
-    # 라우팅
+    # ── 페이지 라우팅 ──
+    menu = st.session_state["menu"]
+
     if menu == "개요":
-        page_overview(df_all, df_scored, df_scored_all, available_months, target_month, selected_date, selected_week)
+        page_overview(df_all, df_scored, df_scored_all, available_months,
+                      target_month, selected_date, selected_week)
+
     elif menu == "일자·주차":
         page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week)
+
     elif menu == "점수분석":
         page_scores(df_m)
+
     elif menu == "주관식분석":
         page_verbatim(df_m)
+
     elif menu == "통합분석(히트맵)":
         page_integrated(df_m)
+
     elif menu == "Action필요":
         page_action(df_m, df_m_all)
+
     elif menu == "일별상담사성과":
         page_daily_agent(df_m)
+
     elif menu == "70점미만_전체":
         page_low_scores(df_scored_all, target_month=target_month)
+
+    elif menu == "검색":
+        page_search(df_scored_all, df_all)
 
 
 if __name__ == "__main__":
