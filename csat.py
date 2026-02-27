@@ -2144,7 +2144,7 @@ def page_daily_agent(df_m):
 
     if "채널_구분" in df_v.columns:
         section_title("일자별 채널별 응답 건수", "📡")
-        daily_ch = (df_v.groupby(                        구분"])["최종점수"]
+        daily_ch = (df_v.groupby(["회신일", "채널_구분"])["최종점수"]
                         .count().unstack(fill_value=0).reset_index())
         daily_ch.columns.name = None
         st.dataframe(daily_ch, use_container_width=True, hide_index=True)
