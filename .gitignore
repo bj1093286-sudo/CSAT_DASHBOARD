@@ -1,0 +1,15 @@
+# Streamlit secrets (절대 커밋 금지)
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+
+# (선택) 산출물 폴더를 쓰면 제외
+output/
+exports/
+*.xlsx
