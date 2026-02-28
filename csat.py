@@ -3012,11 +3012,12 @@ def page_education(df_m, df_scored_all, target_month):
     page_header("🎓 QA 교육·코칭 자료",
                 f"QA강사 교육 준비용 분석  |  기준월: {target_month}")
 
-    tab_coach, tab_keyword, tab_case, tab_best = st.tabs([
+    tab_coach, tab_keyword, tab_case, tab_best, tab_sentiment = st.tabs([
         "🧑‍🏫 코칭 대상 분석",
         "🔑 키워드·VOC 패턴",
         "⚠️ 개선 사례 모음",
         "🌟 우수 사례 모음",
+        "🔬 감성 정확도 검토",
     ])
 
     # ────────────────────────────────────
@@ -3364,6 +3365,312 @@ def page_education(df_m, df_scored_all, target_month):
                         yaxis=dict(showgrid=False, autorange="reversed"),
                     )
                     st.plotly_chart(fig_pk, use_container_width=True)
+
+
+    # ────────────────────────────────────
+    # TAB 5: 감성 정확도 검토
+    # ────────────────────────────────────
+    with tab_sentiment:
+        page_header_sub = "점수와 감성 분류의 불일치를 자동 탐지하여 분류 규칙 개선 포인트를 제안합니다."
+        st.markdown(f"""
+        <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
+                    border-radius:8px;padding:12px 16px;font-size:12px;color:#0f172a;margin-bottom:16px;">
+            🔬 <b>감성 정확도 검토란?</b><br>
+            {page_header_sub}<br><br>
+            <b>원리</b>: 최종점수는 고객이 직접 준 '사실' 데이터입니다.
+            <span style="color:#dc2626;font-weight:700;">점수가 낮은데 긍정으로 분류</span>되거나,
+            <span style="color:#16a34a;font-weight:700;">점수가 높은데 부정으로 분류</span>된 경우를 찾아내어
+            빠진 패턴을 발굴합니다.
+        </div>
+        """, unsafe_allow_html=True)
+
+        voc_col = "주관식" if "주관식" in df_scored_all.columns else None
+        score_col = "최종점수" if "최종점수" in df_scored_all.columns else None
+        sent_col = "긍정부정" if "긍정부정" in df_scored_all.columns else None
+
+        if not voc_col or not score_col or not sent_col:
+            st.warning("주관식, 최종점수, 긍정부정 컬럼이 모두 필요합니다.")
+        else:
+            src = df_scored_all[
+                df_scored_all[voc_col].notna() &
+                (df_scored_all[voc_col].astype(str).str.strip() != "") &
+                df_scored_all[score_col].notna() &
+                df_scored_all[sent_col].notna()
+            ].copy()
+            src[score_col] = pd.to_numeric(src[score_col], errors="coerce")
+            src = src.dropna(subset=[score_col])
+
+            # ── 불일치 케이스 정의 ──
+            # A: 점수 ≤ 70인데 긍정 분류 → "놓친 부정" (가장 중요)
+            missed_neg = src[(src[score_col] <= 70) & (src[sent_col] == "긍정")].copy()
+            # B: 점수 ≥ 90인데 부정 분류 → "과도한 부정"
+            over_neg   = src[(src[score_col] >= 90) & (src[sent_col] == "부정")].copy()
+            # C: 텍스트 있는데 중립 분류 + 점수 극단값
+            missed_mid_neg = src[(src[score_col] <= 70) & (src[sent_col] == "중립")].copy()
+            missed_mid_pos = src[(src[score_col] >= 95) & (src[sent_col] == "중립")].copy()
+
+            # ── 요약 KPI ──
+            total = len(src)
+            section_title("불일치 현황 요약", "")
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                rate_a = round(len(missed_neg)/total*100, 1) if total > 0 else 0
+                kpi_card("놓친 부정", f"{len(missed_neg)}건",
+                         f"저점수({rate_a}%)", "#dc2626")
+            with k2:
+                rate_b = round(len(over_neg)/total*100, 1) if total > 0 else 0
+                kpi_card("과도한 부정", f"{len(over_neg)}건",
+                         f"고점수({rate_b}%)", "#d97706")
+            with k3:
+                rate_c = round(len(missed_mid_neg)/total*100, 1) if total > 0 else 0
+                kpi_card("미분류 부정", f"{len(missed_mid_neg)}건",
+                         f"저점수중립({rate_c}%)", "#ef4444")
+            with k4:
+                total_issue = len(missed_neg) + len(over_neg) + len(missed_mid_neg)
+                accuracy = round((total - total_issue) / total * 100, 1) if total > 0 else 0
+                kpi_card("추정 정확도", f"{accuracy}%",
+                         f"전체 {total}건 기준", "#6366f1")
+
+            st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
+
+            # ── 탭별 상세 분석 ──
+            sub_a, sub_b, sub_c, sub_d = st.tabs([
+                f"🔴 놓친 부정 ({len(missed_neg)}건)",
+                f"🟡 과도한 부정 ({len(over_neg)}건)",
+                f"⬜ 미분류 부정 ({len(missed_mid_neg)}건)",
+                f"📊 점수-감성 분포",
+            ])
+
+            def extract_candidate_patterns(texts, top_n=25):
+                """텍스트에서 자주 등장하는 2~3어절 표현 추출"""
+                bigram_counter = {}
+                trigram_counter = {}
+                for text in texts:
+                    text = str(text)
+                    words = re.findall(r"[가-힣]{2,}", text)
+                    # bigram
+                    for i in range(len(words)-1):
+                        gram = f"{words[i]} {words[i+1]}"
+                        bigram_counter[gram] = bigram_counter.get(gram, 0) + 1
+                    # trigram
+                    for i in range(len(words)-2):
+                        gram = f"{words[i]} {words[i+1]} {words[i+2]}"
+                        trigram_counter[gram] = trigram_counter.get(gram, 0) + 1
+                # 빈도 2 이상만
+                merged = {**{k: v for k, v in bigram_counter.items() if v >= 2},
+                          **{k: v for k, v in trigram_counter.items() if v >= 2}}
+                return sorted(merged.items(), key=lambda x: -x[1])[:top_n]
+
+            # ── SUB A: 놓친 부정 ──
+            with sub_a:
+                st.markdown("""
+                <div style="background:rgba(239,68,68,0.06);border-left:3px solid #ef4444;
+                            border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;
+                            color:#0f172a;margin-bottom:12px;">
+                    <b>정의</b>: 최종점수 ≤ 70인데 '긍정'으로 분류된 케이스<br>
+                    <b>의미</b>: 고객이 낮은 점수를 줬는데 텍스트는 긍정으로 잘못 읽은 것 →
+                    이 텍스트에서 자주 등장하는 표현이 <b>추가해야 할 부정 패턴</b>입니다.
+                </div>
+                """, unsafe_allow_html=True)
+
+                if missed_neg.empty:
+                    st.success("놓친 부정 없음 — 저점수 응답을 잘 잡고 있습니다!")
+                else:
+                    col_pat, col_list = st.columns([1, 1.6])
+                    with col_pat:
+                        section_title("자주 등장하는 표현 (패턴 후보)", "")
+                        patterns = extract_candidate_patterns(missed_neg[voc_col])
+                        if patterns:
+                            pat_df = pd.DataFrame(patterns, columns=["표현", "등장횟수"])
+                            pat_df["→ 규칙 제안"] = pat_df["표현"].apply(
+                                lambda x: "NEG_WORDS 추가 검토" if len(x.split()) == 1
+                                else "NEG_PATTERNS 추가 검토"
+                            )
+                            st.dataframe(pat_df, use_container_width=True, hide_index=True)
+                            st.caption("💡 등장횟수가 많을수록 규칙 추가 우선순위가 높습니다.")
+                        else:
+                            st.info("패턴 추출을 위해 더 많은 데이터가 필요합니다 (현재 건수 부족)")
+
+                    with col_list:
+                        section_title("원문 목록 (직접 검토용)", "")
+                        disp_cols = [c for c in [score_col, sent_col, voc_col, "상담사", "브랜드", "회신일"]
+                                     if c in missed_neg.columns]
+                        st.dataframe(
+                            missed_neg[disp_cols].sort_values(score_col).reset_index(drop=True),
+                            use_container_width=True, hide_index=True, height=400
+                        )
+
+                    # 점수 분포
+                    section_title("점수 분포 (놓친 부정 케이스)", "")
+                    fig_sc = go.Figure(go.Histogram(
+                        x=missed_neg[score_col],
+                        nbinsx=20,
+                        marker=dict(color="#ef4444", opacity=0.75,
+                                    line=dict(color="white", width=0.5)),
+                    ))
+                    fig_sc.update_layout(
+                        height=220, margin=dict(l=10,r=10,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=11),
+                        xaxis=dict(title="최종점수", showgrid=False),
+                        yaxis=dict(title="건수", showgrid=True,
+                                   gridcolor="rgba(226,232,240,0.6)"),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_sc, use_container_width=True)
+
+            # ── SUB B: 과도한 부정 ──
+            with sub_b:
+                st.markdown("""
+                <div style="background:rgba(245,158,11,0.06);border-left:3px solid #f59e0b;
+                            border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;
+                            color:#0f172a;margin-bottom:12px;">
+                    <b>정의</b>: 최종점수 ≥ 90인데 '부정'으로 분류된 케이스<br>
+                    <b>의미</b>: 고객이 높은 점수를 줬는데 텍스트가 부정으로 오분류 →
+                    이 표현들은 <b>부정처럼 보이지만 실제론 중립/긍정</b>인 패턴입니다.
+                </div>
+                """, unsafe_allow_html=True)
+
+                if over_neg.empty:
+                    st.success("과도한 부정 없음 — 오탐이 없습니다!")
+                else:
+                    col_p2, col_l2 = st.columns([1, 1.6])
+                    with col_p2:
+                        section_title("자주 등장하는 표현 (오탐 후보)", "")
+                        patterns2 = extract_candidate_patterns(over_neg[voc_col])
+                        if patterns2:
+                            pat_df2 = pd.DataFrame(patterns2, columns=["표현", "등장횟수"])
+                            pat_df2["→ 규칙 제안"] = "NEGATION_PATTERNS 추가 검토"
+                            st.dataframe(pat_df2, use_container_width=True, hide_index=True)
+                            st.caption("💡 이 표현들은 부정어처럼 보이지만 실제 긍정인 경우입니다.")
+                        else:
+                            st.info("패턴 추출을 위해 더 많은 데이터 필요")
+                    with col_l2:
+                        section_title("원문 목록", "")
+                        disp_cols2 = [c for c in [score_col, sent_col, voc_col, "상담사", "회신일"]
+                                      if c in over_neg.columns]
+                        st.dataframe(
+                            over_neg[disp_cols2].sort_values(score_col, ascending=False).reset_index(drop=True),
+                            use_container_width=True, hide_index=True, height=400
+                        )
+
+            # ── SUB C: 미분류 부정 ──
+            with sub_c:
+                st.markdown("""
+                <div style="background:rgba(100,116,139,0.06);border-left:3px solid #64748b;
+                            border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;
+                            color:#0f172a;margin-bottom:12px;">
+                    <b>정의</b>: 최종점수 ≤ 70인데 '중립'으로 분류된 케이스<br>
+                    <b>의미</b>: 부정 표현이 있지만 현재 규칙이 인식 못하는 경우 →
+                    이 텍스트의 자주 등장 표현이 <b>완전히 새로운 부정 단어/패턴 후보</b>입니다.
+                </div>
+                """, unsafe_allow_html=True)
+
+                if missed_mid_neg.empty:
+                    st.success("미분류 부정 없음!")
+                else:
+                    col_p3, col_l3 = st.columns([1, 1.6])
+                    with col_p3:
+                        section_title("신규 패턴 발굴 후보", "")
+                        patterns3 = extract_candidate_patterns(missed_mid_neg[voc_col])
+                        if patterns3:
+                            pat_df3 = pd.DataFrame(patterns3, columns=["표현", "등장횟수"])
+                            pat_df3["→ 규칙 제안"] = pat_df3["표현"].apply(
+                                lambda x: "NEG_WORDS 신규 추가" if len(x.split()) <= 2
+                                else "NEG_PATTERNS 신규 추가"
+                            )
+                            st.dataframe(pat_df3, use_container_width=True, hide_index=True)
+                            st.caption("💡 이 표현들이 현재 규칙에 전혀 없는 새로운 부정 표현입니다.")
+                        else:
+                            st.info("패턴 추출을 위해 더 많은 데이터 필요")
+                    with col_l3:
+                        section_title("원문 목록", "")
+                        disp_cols3 = [c for c in [score_col, sent_col, voc_col, "상담사", "회신일"]
+                                      if c in missed_mid_neg.columns]
+                        st.dataframe(
+                            missed_mid_neg[disp_cols3].sort_values(score_col).reset_index(drop=True),
+                            use_container_width=True, hide_index=True, height=400
+                        )
+
+            # ── SUB D: 점수-감성 분포 ──
+            with sub_d:
+                section_title("점수 구간별 감성 분류 분포", "")
+                st.markdown("""
+                <div style="font-size:11px;color:#64748b;margin-bottom:10px;">
+                    이상적으로는 저점수 구간에 부정이 몰리고, 고점수 구간에 긍정이 몰려야 합니다.
+                    그렇지 않은 구간이 규칙 개선이 필요한 영역입니다.
+                </div>
+                """, unsafe_allow_html=True)
+
+                # 점수 구간 생성
+                bins = [0, 50, 60, 70, 80, 90, 100]
+                labels = ["~50", "51~60", "61~70", "71~80", "81~90", "91~100"]
+                src2 = src.copy()
+                src2["점수구간"] = pd.cut(src2[score_col], bins=bins, labels=labels, right=True)
+
+                dist_rows = []
+                for seg in labels:
+                    sub_seg = src2[src2["점수구간"] == seg]
+                    t = len(sub_seg)
+                    if t == 0:
+                        continue
+                    pos = len(sub_seg[sub_seg[sent_col] == "긍정"])
+                    neu = len(sub_seg[sub_seg[sent_col] == "중립"])
+                    neg = len(sub_seg[sub_seg[sent_col] == "부정"])
+                    dist_rows.append({
+                        "점수구간": seg, "전체": t,
+                        "긍정(%)": round(pos/t*100, 1),
+                        "중립(%)": round(neu/t*100, 1),
+                        "부정(%)": round(neg/t*100, 1),
+                    })
+
+                if dist_rows:
+                    dist_df = pd.DataFrame(dist_rows)
+                    col_d1, col_d2 = st.columns([1, 2])
+                    with col_d1:
+                        st.dataframe(dist_df, use_container_width=True, hide_index=True)
+                    with col_d2:
+                        fig_dist = go.Figure()
+                        for label_s, color in [("부정(%)", "#ef4444"), ("중립(%)", "#f59e0b"), ("긍정(%)", "#22c55e")]:
+                            if label_s in dist_df.columns:
+                                fig_dist.add_trace(go.Bar(
+                                    name=label_s,
+                                    x=dist_df["점수구간"],
+                                    y=dist_df[label_s],
+                                    marker=dict(color=color, opacity=0.85,
+                                                line=dict(color="white", width=0.5)),
+                                ))
+                        fig_dist.update_layout(
+                            barmode="stack",
+                            height=320, margin=dict(l=10,r=10,t=10,b=10),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            font=dict(family="Inter, Noto Sans KR", size=12),
+                            xaxis=dict(title="점수 구간", showgrid=False),
+                            yaxis=dict(title="%", showgrid=True,
+                                       gridcolor="rgba(226,232,240,0.6)"),
+                            legend=dict(orientation="h", y=-0.25, x=0.5,
+                                        xanchor="center", font=dict(size=11)),
+                        )
+                        st.plotly_chart(fig_dist, use_container_width=True)
+
+                    # 이상 구간 알림
+                    section_title("⚠️ 이상 구간 자동 감지", "")
+                    alerts = []
+                    for row in dist_rows:
+                        seg = row["점수구간"]
+                        if seg in ["~50", "51~60", "61~70"]:
+                            if row["긍정(%)"] > 20:
+                                alerts.append(f"🔴 [{seg}점] 저점수 구간인데 긍정 비율 {row['긍정(%)']}% → 부정 패턴 추가 필요")
+                            if row["중립(%)"] > 50:
+                                alerts.append(f"🟡 [{seg}점] 저점수 구간인데 중립 비율 {row['중립(%)']}% → 미분류 표현 발굴 필요")
+                        if seg in ["81~90", "91~100"]:
+                            if row["부정(%)"] > 10:
+                                alerts.append(f"🟠 [{seg}점] 고점수 구간인데 부정 비율 {row['부정(%)']}% → 오탐 패턴 점검 필요")
+                    if alerts:
+                        for a in alerts:
+                            st.warning(a)
+                    else:
+                        st.success("✅ 점수-감성 분포가 양호합니다.")
 
 
 # ══════════════════════════════════════════════════════════════════
