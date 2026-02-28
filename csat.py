@@ -1492,15 +1492,97 @@ def page_overview(df_all, df_scored, df_scored_all, available_months,
 
 # ── 13-2. 일자·주차 (그래프 개선) ─────────────────────────────
 def page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week):
-    page_header("일자 / 주차 리포트",
-                f"선택 날짜: {selected_date or '-'}  |  선택 주차: {selected_week or '-'}")
+    try:
+        page_header(
+            "일자 / 주차 리포트",
+            f"날짜: {selected_date or '미선택'}  |  주차: {selected_week or '미선택'}"
+        )
+    except Exception:
+        st.title("일자 / 주차 리포트")
 
-    tab_daily, tab_weekly = st.tabs(["📅 DAILY", "📆 WEEKLY"])
+    # ── 미선택 시 전체 일별 요약 표시 ──
+    if not selected_date and not selected_week:
+        st.info("💡 사이드바 상단에서 **일자** 또는 **주차**를 선택하면 해당 기간 상세 분석이 표시됩니다. 아래는 전체 기간 일별 요약입니다.")
+        try:
+            if "회신일" in df_scored_all.columns and "최종점수" in df_scored_all.columns:
+                daily_sum = (
+                    df_scored_all[df_scored_all["회신일"].notna()]
+                    .groupby("회신일")
+                    .agg(응답건수=("최종점수", "count"), 평균점수=("최종점수", "mean"))
+                    .round(1)
+                    .reset_index()
+                    .sort_values("회신일", ascending=True)
+                )
+                # 최근 30일만 차트용
+                chart_data = daily_sum.tail(30).copy()
+
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    section_title("일별 응답건수 (최근 30일)", "")
+                    fig_ds = go.Figure(go.Bar(
+                        x=list(chart_data["회신일"]),
+                        y=list(chart_data["응답건수"]),
+                        marker=dict(color="#6366f1", opacity=0.8,
+                                    line=dict(color="white", width=0.5)),
+                    ))
+                    fig_ds.update_layout(
+                        height=300, margin=dict(l=10, r=10, t=10, b=60),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=11),
+                        xaxis=dict(showgrid=False, tickangle=-45,
+                                   tickfont=dict(size=9, color="#64748b")),
+                        yaxis=dict(showgrid=True,
+                                   gridcolor="rgba(226,232,240,0.6)"),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_ds, use_container_width=True)
+
+                with col_s2:
+                    section_title("일별 평균점수 (최근 30일)", "")
+                    fig_dp = go.Figure(go.Scatter(
+                        x=list(chart_data["회신일"]),
+                        y=list(chart_data["평균점수"]),
+                        mode="lines+markers",
+                        line=dict(color="#6366f1", width=2.5),
+                        marker=dict(size=6, color="#6366f1",
+                                    line=dict(color="white", width=2)),
+                        fill="tozeroy",
+                        fillcolor="rgba(99,102,241,0.07)",
+                    ))
+                    fig_dp.add_hline(y=SCORE_GOOD, line_dash="dash",
+                                     line_color="#22c55e", line_width=1.5,
+                                     annotation_text="양호(90)")
+                    fig_dp.add_hline(y=SCORE_CAUTION, line_dash="dash",
+                                     line_color="#ef4444", line_width=1.5,
+                                     annotation_text="주의(70)")
+                    fig_dp.update_layout(
+                        height=300, margin=dict(l=10, r=80, t=10, b=60),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=11),
+                        xaxis=dict(showgrid=False, tickangle=-45,
+                                   tickfont=dict(size=9, color="#64748b")),
+                        yaxis=dict(showgrid=True,
+                                   gridcolor="rgba(226,232,240,0.6)",
+                                   range=[50, 105],
+                                   tickfont=dict(size=10, color="#64748b")),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_dp, use_container_width=True)
+
+                section_title("일별 응답 현황 전체 목록", "")
+                st.dataframe(
+                    daily_sum.sort_values("회신일", ascending=False),
+                    use_container_width=True, hide_index=True
+                )
+        except Exception as e:
+            st.warning(f"일별 요약 표시 중 오류: {e}")
+
+    tab_daily, tab_weekly = st.tabs(["📅 DAILY 상세", "📆 WEEKLY 상세"])
 
     # ── DAILY ──
     with tab_daily:
         if not selected_date:
-            st.info("사이드바에서 일자를 선택하세요.")
+            st.info("👆 사이드바 상단 **일자(선택)** 에서 날짜를 선택하세요.")
         else:
             df_day_all = filter_by_date_sent(df_all, selected_date)
             df_day_kpi = filter_by_date(df_scored_all, selected_date, date_col="회신일")
@@ -1602,7 +1684,7 @@ def page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week
     # ── WEEKLY ──
     with tab_weekly:
         if not selected_week:
-            st.info("사이드바에서 주차를 선택하세요.")
+            st.info("👆 사이드바 상단 **주차(선택)** 에서 주차를 선택하세요.")
         else:
             df_week_all = filter_by_week_sent(df_all, selected_week)
             df_week_kpi = filter_by_week(df_scored_all, selected_week, week_col="회신주차_정제")
@@ -3322,39 +3404,48 @@ def main():
     # ── 페이지 라우팅 ──
     menu = st.session_state["menu"]
 
-    if menu == "개요":
-        page_overview(df_all, df_scored, df_scored_all, available_months,
-                      target_month, selected_date, selected_week)
+    try:
+        if menu == "개요":
+            page_overview(df_all, df_scored, df_scored_all, available_months,
+                          target_month, selected_date, selected_week)
 
-    elif menu == "일자/주차":
-        page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week)
+        elif menu == "일자/주차":
+            page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week)
 
-    elif menu == "점수분석":
-        page_scores(df_m)
+        elif menu == "점수분석":
+            page_scores(df_m)
 
-    elif menu == "주관식분석":
-        page_verbatim(df_m)
+        elif menu == "주관식분석":
+            page_verbatim(df_m)
 
-    elif menu == "통합분석(히트맵)":
-        page_integrated(df_m)
+        elif menu == "통합분석(히트맵)":
+            page_integrated(df_m)
 
-    elif menu == "Action필요":
-        page_action(df_m, df_m_all)
+        elif menu == "Action필요":
+            page_action(df_m, df_m_all)
 
-    elif menu == "일별상담사성과":
-        page_daily_agent(df_m)
+        elif menu == "일별상담사성과":
+            page_daily_agent(df_m)
 
-    elif menu == "70점미만_전체":
-        page_low_scores(df_scored_all, target_month=target_month)
+        elif menu == "70점미만_전체":
+            page_low_scores(df_scored_all, target_month=target_month)
 
-    elif menu == "검색":
-        page_search(df_scored_all, df_all)
+        elif menu == "검색":
+            page_search(df_scored_all, df_all)
 
-    elif menu == "인사이트":
-        page_insight(df_all, df_scored, df_scored_all, available_months, target_month)
+        elif menu == "인사이트":
+            page_insight(df_all, df_scored, df_scored_all, available_months, target_month)
 
-    elif menu == "교육자료":
-        page_education(df_m, df_scored_all, target_month)
+        elif menu == "교육자료":
+            page_education(df_m, df_scored_all, target_month)
+
+        else:
+            st.warning(f"알 수 없는 메뉴: {menu}")
+
+    except Exception as e:
+        st.error(f"페이지 렌더링 오류 [{menu}]: {e}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 
 if __name__ == "__main__":
