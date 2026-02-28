@@ -2590,17 +2590,17 @@ def page_search(df_scored_all, df_all):
 
 # ── 기존 9개 메뉴 + 신규 2개(인사이트, 교육자료) ──
 MENU_ITEMS = [
-    {"key": "개요",             "icon": "🏠", "label": "개요"},
-    {"key": "일자·주차",        "icon": "📅", "label": "일자·주차"},
-    {"key": "점수분석",         "icon": "📊", "label": "점수분석"},
-    {"key": "주관식분석",       "icon": "💬", "label": "주관식"},
-    {"key": "통합분석(히트맵)", "icon": "🗺️", "label": "히트맵"},
-    {"key": "Action필요",       "icon": "⚠️", "label": "Action"},
-    {"key": "일별상담사성과",   "icon": "👤", "label": "상담사성과"},
-    {"key": "70점미만_전체",    "icon": "🔴", "label": "70점미만"},
-    {"key": "검색",             "icon": "🔍", "label": "검색"},
-    {"key": "인사이트",         "icon": "💡", "label": "인사이트"},
-    {"key": "교육자료",         "icon": "🎓", "label": "교육자료"},
+    {"key": "개요",         "icon": "🏠", "label": "개요"},
+    {"key": "일자주차",     "icon": "📅", "label": "일자·주차"},
+    {"key": "점수분석",     "icon": "📊", "label": "점수분석"},
+    {"key": "주관식분석",   "icon": "💬", "label": "주관식"},
+    {"key": "히트맵",       "icon": "🗺️", "label": "히트맵"},
+    {"key": "Action필요",   "icon": "⚠️", "label": "Action"},
+    {"key": "상담사성과",   "icon": "👤", "label": "상담사성과"},
+    {"key": "70점미만",     "icon": "🔴", "label": "70점미만"},
+    {"key": "검색",         "icon": "🔍", "label": "검색"},
+    {"key": "인사이트",     "icon": "💡", "label": "인사이트"},
+    {"key": "교육자료",     "icon": "🎓", "label": "교육자료"},
 ]
 
 # ── 사이드바: 기간선택(상단) + compact 메뉴 ──
@@ -3360,8 +3360,12 @@ def main():
     )
     inject_css()
 
-    # ── 세션 상태 초기화 ──
+    # ── 세션 상태 초기화 (특수문자 없는 key 사용) ──
     if "menu" not in st.session_state:
+        st.session_state["menu"] = "개요"
+    # 구버전 key 잔존 방어: 유효하지 않은 key면 개요로 리셋
+    valid_keys = {item["key"] for item in MENU_ITEMS}
+    if st.session_state["menu"] not in valid_keys:
         st.session_state["menu"] = "개요"
 
     # ── 데이터 로드 ──
@@ -3409,7 +3413,7 @@ def main():
             page_overview(df_all, df_scored, df_scored_all, available_months,
                           target_month, selected_date, selected_week)
 
-        elif menu == "일자/주차":
+        elif menu == "일자주차":
             page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week)
 
         elif menu == "점수분석":
@@ -3418,16 +3422,16 @@ def main():
         elif menu == "주관식분석":
             page_verbatim(df_m)
 
-        elif menu == "통합분석(히트맵)":
+        elif menu == "히트맵":
             page_integrated(df_m)
 
         elif menu == "Action필요":
             page_action(df_m, df_m_all)
 
-        elif menu == "일별상담사성과":
+        elif menu == "상담사성과":
             page_daily_agent(df_m)
 
-        elif menu == "70점미만_전체":
+        elif menu == "70점미만":
             page_low_scores(df_scored_all, target_month=target_month)
 
         elif menu == "검색":
@@ -3440,7 +3444,8 @@ def main():
             page_education(df_m, df_scored_all, target_month)
 
         else:
-            st.warning(f"알 수 없는 메뉴: {menu}")
+            st.session_state["menu"] = "개요"
+            st.rerun()
 
     except Exception as e:
         st.error(f"페이지 렌더링 오류 [{menu}]: {e}")
