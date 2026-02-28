@@ -184,28 +184,60 @@ def classify_sentiment(text: str) -> str:
     if not isinstance(text, str) or text.strip() == "":
         return None
     t = re.sub(r"\s+", "", text.strip())
+
+    # ── 1순위: 명확한 패턴 기반 부정 ──
     for pat in NEG_PATTERNS:
         if re.search(pat, text.strip()):
             return "부정"
+
     negated   = any(re.search(p, t) for p in NEGATION_PATTERNS)
     pos_count = sum(1 for w in POS_WORDS if w in t)
     neg_count = 0 if negated else sum(1 for w in NEG_WORDS if w in t)
+
+    # ── 2순위: 부정 단어가 1개라도 있으면 → 부정 가중치 적용 ──
+    # 기존: neg > pos 일 때만 부정 → 문제: 긍정 단어 많으면 묻혀버림
+    # 개선: 부정 단어가 있으면 pos의 1.5배 이상일 때만 긍정, 아니면 부정
+    if neg_count > 0 and not negated:
+        return "부정" if neg_count * 1 >= pos_count * 0.6 else "긍정"
+
     if neg_count == 0 and pos_count == 0:
         short_pos = ["감사합니다","고맙습니다","잘됐어요","잘됐습니다","해결됐어요",
                      "완료됐습니다","수고하셨습니다","잘부탁드립니다"]
         return "긍정" if any(w in t for w in short_pos) else "중립"
+
     return "부정" if neg_count > pos_count else "긍정"
 
 
 def classify_with_score(text: str, score) -> str:
+    """
+    텍스트 기반 감성 + 점수를 함께 고려한 최종 분류.
+
+    ✅ 수정 핵심:
+      - 기존: 점수 ≤ 90이면 긍정→중립 → 부정이어야 할 것까지 중립으로 왜곡
+      - 개선:
+        * 점수 < 70 + 텍스트 중립/긍정 → 부정 (점수가 명백히 불만)
+        * 점수 70~90 + 텍스트 긍정 → 중립 (애매 구간)
+        * 점수 > 90 → 텍스트 분류 그대로 신뢰
+        * 텍스트가 이미 부정이면 점수와 무관하게 부정 유지
+    """
     base = classify_sentiment(text)
     if base is None:
         return None
     try:
-        if float(score) <= 90 and base == "긍정":
-            return "중립"
+        s = float(score)
     except (TypeError, ValueError):
-        pass
+        return base
+
+    # 텍스트가 부정 → 점수와 무관하게 부정 유지
+    if base == "부정":
+        return "부정"
+    # 점수가 70 미만인데 텍스트가 중립/긍정 → 부정으로 보정
+    if s < 70:
+        return "부정"
+    # 점수가 70~90 구간이고 텍스트가 긍정 → 중립으로 보정 (확실한 만족이 아님)
+    if s < 90 and base == "긍정":
+        return "중립"
+    # 90점 이상 → 텍스트 분류 그대로
     return base
 
 
@@ -219,6 +251,65 @@ def add_sentiment_column(df: pd.DataFrame) -> pd.DataFrame:
             df["긍정부정"] = df[col].apply(classify_sentiment)
     else:
         df["긍정부정"] = None
+    return df
+
+
+# ══════════════════════════════════════════════════════════════════
+# 2-B. 수동 부정 라벨 관리
+# ══════════════════════════════════════════════════════════════════
+MANUAL_LABEL_SHEET = "수동부정라벨"   # Google Sheets 내 시트(탭) 이름
+
+def load_manual_neg_labels() -> set:
+    """
+    Google Sheets의 '수동부정라벨' 시트에서 상담KEY 목록을 불러온다.
+    시트가 없거나 비어있으면 빈 set 반환.
+    """
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df_label = conn.read(worksheet=MANUAL_LABEL_SHEET, ttl=60)
+        if df_label is None or df_label.empty:
+            return set()
+        if "상담KEY" in df_label.columns:
+            return set(df_label["상담KEY"].dropna().astype(str).tolist())
+        # 첫 번째 컬럼을 KEY로 간주
+        return set(df_label.iloc[:, 0].dropna().astype(str).tolist())
+    except Exception:
+        return set()
+
+
+def save_manual_neg_labels(keys: list):
+    """
+    수동 부정으로 지정된 상담KEY 목록을 Google Sheets '수동부정라벨' 시트에 저장.
+    기존 데이터에 누적(중복 제거).
+    """
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        # 기존 라벨 불러오기
+        existing = load_manual_neg_labels()
+        all_keys = sorted(existing | set(str(k) for k in keys))
+        df_save = pd.DataFrame({"상담KEY": all_keys,
+                                "라벨": ["부정"] * len(all_keys),
+                                "등록일시": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")] * len(all_keys)})
+        conn.update(worksheet=MANUAL_LABEL_SHEET, data=df_save)
+        return True
+    except Exception as e:
+        st.error(f"저장 실패: {e}")
+        return False
+
+
+def apply_manual_neg_labels(df: pd.DataFrame, manual_keys: set) -> pd.DataFrame:
+    """
+    수동 부정 라벨이 있는 행의 긍정부정 컬럼을 '부정'으로 강제 설정.
+    상담KEY 컬럼이 없으면 index 기반으로 처리.
+    """
+    if not manual_keys or df.empty:
+        return df
+    df = df.copy()
+    if "상담KEY" in df.columns:
+        mask = df["상담KEY"].astype(str).isin(manual_keys)
+    else:
+        mask = df.index.astype(str).isin(manual_keys)
+    df.loc[mask, "긍정부정"] = "부정"
     return df
 
 
@@ -1978,7 +2069,6 @@ def page_verbatim(df_m):
         if "긍정부정" in df_m.columns:
             s = df_m["긍정부정"].value_counts().reset_index()
             s.columns = ["긍정/부정","건수"]
-            # ✅ shadcn/ui 개선 - Donut + 중앙 텍스트
             fig = go.Figure()
             fig.add_trace(go.Pie(
                 labels=s["긍정/부정"],
@@ -2012,7 +2102,7 @@ def page_verbatim(df_m):
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # ✅ shadcn/ui 개선 - 키워드 가로 막대 (그라데이션 색상)
+    # ✅ 키워드 TOP 20
     section_title("키워드 TOP 20", "🔑")
     kws = extract_keywords(df_m, 20)
     if kws:
@@ -2044,6 +2134,7 @@ def page_verbatim(df_m):
     else:
         st.caption("키워드 없음 (주관식 컬럼 확인)")
 
+    # ✅ 부정 응답 상세
     section_title("부정 응답 상세", "⚠️")
     if "긍정부정" in df_m.columns:
         neg = df_m[df_m["긍정부정"] == "부정"]
@@ -2053,14 +2144,141 @@ def page_verbatim(df_m):
             cols = get_display_cols(neg, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식"])
             st.dataframe(neg[cols], use_container_width=True, hide_index=True)
 
-    section_title("전체 주관식 응답", "📋")
-    col = "주관식" if "주관식" in df_m.columns else None
-    if col:
-        vbt  = df_m[df_m[col].notna() & (df_m[col].astype(str).str.strip() != "")]
-        cols = get_display_cols(vbt, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"])
-        st.dataframe(vbt[cols], use_container_width=True, hide_index=True)
-    else:
+    # ══════════════════════════════════════════════════════════════
+    # ✅ 수동 부정 라벨링 섹션
+    # ══════════════════════════════════════════════════════════════
+    st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
+    section_title("🏷️ 수동 부정 지정 (강사 직접 라벨링)", "📝")
+
+    st.markdown("""
+    <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);
+                border-radius:8px;padding:12px 16px;font-size:12px;color:#0f172a;margin-bottom:12px;">
+        💡 <b>사용법</b>: 아래 전체 주관식 목록에서 <b>부정으로 봐야 할 행에 체크</b>하면,
+        Google Sheets의 <b>'수동부정라벨' 시트</b>에 자동 저장되고
+        이후 모든 분석(개요·점수·히트맵 등)에 <b>즉시 반영</b>됩니다.
+        <br>한 번 저장된 라벨은 영구 유지되며 새로운 항목은 누적됩니다.
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_vbt = "주관식" if "주관식" in df_m.columns else None
+    if not col_vbt:
         st.caption("주관식 컬럼 없음")
+        return
+
+    vbt = df_m[df_m[col_vbt].notna() & (df_m[col_vbt].astype(str).str.strip() != "")].copy()
+
+    # 현재 수동 라벨 로드
+    current_manual_keys = load_manual_neg_labels()
+
+    # 표시할 컬럼 선택
+    display_cols = get_display_cols(vbt, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"])
+
+    # 이미 수동 부정인 행 표시용 컬럼 추가
+    vbt["수동부정여부"] = ""
+    if "상담KEY" in vbt.columns:
+        vbt.loc[vbt["상담KEY"].astype(str).isin(current_manual_keys), "수동부정여부"] = "✅ 수동지정"
+    display_cols_final = ["수동부정여부"] + [c for c in display_cols if c != "수동부정여부"]
+
+    # ── 필터: 전체 / 중립만 / 긍정만 / 수동지정만 ──
+    filter_opt = st.radio(
+        "표시 필터",
+        ["전체", "중립만 (애매한 건)", "긍정만", "이미 수동지정된 건"],
+        horizontal=True,
+        key="vbt_filter",
+    )
+    if filter_opt == "중립만 (애매한 건)":
+        vbt_show = vbt[vbt["긍정부정"] == "중립"].copy()
+    elif filter_opt == "긍정만":
+        vbt_show = vbt[vbt["긍정부정"] == "긍정"].copy()
+    elif filter_opt == "이미 수동지정된 건":
+        vbt_show = vbt[vbt["수동부정여부"] == "✅ 수동지정"].copy()
+    else:
+        vbt_show = vbt.copy()
+
+    if vbt_show.empty:
+        st.info("해당 조건의 데이터가 없습니다.")
+    else:
+        st.caption(f"총 {len(vbt_show)}건 표시 중 — 부정으로 지정할 행을 아래에서 선택하세요.")
+
+        # ── 행 선택 방식: 상담KEY 또는 index 사용 ──
+        use_key_col = "상담KEY" in vbt_show.columns
+
+        # 선택 가능한 항목 목록 (라벨: 날짜+상담사+주관식 앞 20자)
+        def make_label(row):
+            date_part  = str(row.get("회신일",""))[:10]
+            agent_part = str(row.get("상담사",""))
+            text_part  = str(row.get("주관식",""))[:25].replace("\n"," ")
+            score_part = str(row.get("최종점수",""))
+            sent_part  = str(row.get("긍정부정",""))
+            already    = " ✅" if row.get("수동부정여부","") == "✅ 수동지정" else ""
+            return f"[{sent_part}|{score_part}점] {date_part} {agent_part} — {text_part}...{already}"
+
+        option_labels = vbt_show.apply(make_label, axis=1).tolist()
+        if use_key_col:
+            option_keys = vbt_show["상담KEY"].astype(str).tolist()
+        else:
+            option_keys = vbt_show.index.astype(str).tolist()
+
+        # key↔label 매핑
+        key_label_map = dict(zip(option_labels, option_keys))
+
+        selected_labels = st.multiselect(
+            "부정으로 지정할 항목 선택 (다중 선택 가능)",
+            options=option_labels,
+            key="manual_neg_select",
+            help="중립·긍정으로 분류됐지만 실제로는 부정인 건을 선택하세요.",
+        )
+
+        # 전체 목록 테이블도 표시
+        with st.expander("📋 전체 주관식 목록 보기", expanded=False):
+            st.dataframe(
+                vbt_show[display_cols_final].reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        # ── 저장 버튼 ──
+        if selected_labels:
+            selected_keys = [key_label_map[lbl] for lbl in selected_labels]
+            st.markdown(f"""
+            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);
+                        border-radius:8px;padding:10px 14px;font-size:12px;color:#0f172a;margin:8px 0;">
+                선택된 <b>{len(selected_keys)}건</b>을 부정으로 저장합니다.
+                저장 후 페이지가 새로고침되며 모든 분석에 즉시 반영됩니다.
+            </div>
+            """, unsafe_allow_html=True)
+
+            col_save, col_cancel = st.columns([1, 4])
+            with col_save:
+                if st.button("💾 부정으로 저장", type="primary", key="save_manual_neg"):
+                    success = save_manual_neg_labels(selected_keys)
+                    if success:
+                        st.success(f"✅ {len(selected_keys)}건이 '수동부정라벨' 시트에 저장되었습니다!")
+                        # 캐시 클리어 후 재실행
+                        load_from_gsheets.clear()
+                        st.rerun()
+                    else:
+                        st.error("저장에 실패했습니다. Google Sheets 연결을 확인하세요.")
+
+    # ── 수동 부정 목록 현황 ──
+    if current_manual_keys:
+        with st.expander(f"🗂️ 현재 수동 부정 지정 목록 ({len(current_manual_keys)}건)", expanded=False):
+            st.markdown("""
+            <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+                아래는 지금까지 강사가 수동으로 지정한 부정 라벨입니다.
+                수정이 필요하면 Google Sheets의 '수동부정라벨' 시트를 직접 편집하세요.
+            </div>
+            """, unsafe_allow_html=True)
+            if "상담KEY" in df_m.columns:
+                labeled_in_month = df_m[df_m["상담KEY"].astype(str).isin(current_manual_keys)]
+                if not labeled_in_month.empty:
+                    dcols = get_display_cols(labeled_in_month, ["회신일","상담사","브랜드","최종점수","주관식"])
+                    st.dataframe(labeled_in_month[dcols].reset_index(drop=True),
+                                 use_container_width=True, hide_index=True)
+                else:
+                    st.caption("이번 달에 해당하는 수동 지정 건 없음 (다른 달에 있을 수 있음)")
+            else:
+                st.caption(f"상담KEY 컬럼이 없어 목록 표시 불가 — 총 {len(current_manual_keys)}건 등록됨")
 
 
 # ── 13-5. 통합분석(히트맵) (그래프 개선) ─────────────────────────
@@ -3716,6 +3934,12 @@ def main():
         st.error(f"데이터 처리 오류: {e}")
         st.exception(e)
         return
+
+    # ── 수동 부정 라벨 로드 & 전체 df에 반영 ──
+    manual_neg_keys = load_manual_neg_labels()
+    if manual_neg_keys:
+        df_scored     = apply_manual_neg_labels(df_scored,     manual_neg_keys)
+        df_scored_all = apply_manual_neg_labels(df_scored_all, manual_neg_keys)
 
     # ── 사이드바 (기간선택 상단 포함) ──
     selected_menu, target_month, selected_date, selected_week = render_sidebar_nav(
