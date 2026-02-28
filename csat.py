@@ -838,23 +838,41 @@ def inject_css():
       }}
 
       /* ════════════════════════════════════
-         사이드바 (원본 유지 - 절대 건들지 말 것)
+         사이드바 - Compact 개선 (메뉴 상단 집중)
          ════════════════════════════════════ */
       section[data-testid="stSidebar"] {{
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
         border-right: 1px solid rgba(255,255,255,0.06);
-        min-width: 220px !important;
-        max-width: 240px !important;
+        min-width: 200px !important;
+        max-width: 215px !important;
       }}
       section[data-testid="stSidebar"] > div {{
         padding: 0 !important;
       }}
+      /* 사이드바 내 selectbox 라벨 소형화 */
+      section[data-testid="stSidebar"] label {{
+        font-size: 10px !important;
+        color: rgba(148,163,184,0.7) !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
+      }}
+      /* 사이드바 내 selectbox 본체 소형화 */
+      section[data-testid="stSidebar"] div[data-testid="stSelectbox"] > div > div {{
+        font-size: 12px !important;
+        min-height: 30px !important;
+        padding: 2px 8px !important;
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        color: #e2e8f0 !important;
+        border-radius: 6px !important;
+      }}
       section[data-testid="stSidebar"] div[data-testid="stButton"] > button {{
         position: absolute !important;
-        top: -36px !important;
+        top: -30px !important;
         left: 0 !important;
         opacity: 0 !important;
-        height: 36px !important;
+        height: 30px !important;
         width: 100% !important;
         z-index: 999 !important;
         cursor: pointer !important;
@@ -2485,39 +2503,101 @@ def page_search(df_scored_all, df_all):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 14. 사이드바 네비게이션 (원본 유지 - 절대 건들지 말 것)
+# 14. 사이드바 네비게이션 (Compact 개선 + 기간선택 상단 + 신규 메뉴)
 # ══════════════════════════════════════════════════════════════════
+
+# ── 기존 9개 메뉴 + 신규 2개(인사이트, 교육자료) ──
 MENU_ITEMS = [
-    {"key": "개요",             "label": "대시보드"},
-    {"key": "일자·주차",        "label": "일자·주차"},
-    {"key": "점수분석",         "label": "점수분석"},
-    {"key": "주관식분석",       "label": "주관식분석"},
-    {"key": "통합분석(히트맵)", "label": "통합분석(히트맵)"},
-    {"key": "Action필요",       "label": "Action 필요"},
-    {"key": "일별상담사성과",   "label": "일별 상담사 성과"},
-    {"key": "70점미만_전체",    "label": "70점 미만 전체"},
-    {"key": "검색",             "label": "검색"},
+    {"key": "개요",             "icon": "🏠", "label": "개요"},
+    {"key": "일자·주차",        "icon": "📅", "label": "일자·주차"},
+    {"key": "점수분석",         "icon": "📊", "label": "점수분석"},
+    {"key": "주관식분석",       "icon": "💬", "label": "주관식"},
+    {"key": "통합분석(히트맵)", "icon": "🗺️", "label": "히트맵"},
+    {"key": "Action필요",       "icon": "⚠️", "label": "Action"},
+    {"key": "일별상담사성과",   "icon": "👤", "label": "상담사성과"},
+    {"key": "70점미만_전체",    "icon": "🔴", "label": "70점미만"},
+    {"key": "검색",             "icon": "🔍", "label": "검색"},
+    {"key": "인사이트",         "icon": "💡", "label": "인사이트"},
+    {"key": "교육자료",         "icon": "🎓", "label": "교육자료"},
 ]
 
+# ── 사이드바: 기간선택(상단) + compact 메뉴 ──
+def render_sidebar_nav(current_menu: str, available_months=None,
+                       df_scored_all=None, df_all=None):
+    MISSING_SET = {"", "nan", "NaT", "None", "NaN", "<NA>", "NA"}
 
-def render_sidebar_nav(current_menu: str) -> str:
     with st.sidebar:
+        # ── 헤더 ──
         st.markdown("""
-        <div style="padding:18px 16px 14px;
+        <div style="padding:10px 12px 8px;
                     border-bottom:1px solid rgba(255,255,255,0.08);">
-            <div style="font-size:15px;font-weight:700;color:#f1f5f9;">
-                CSAT Dashboard
+            <div style="font-size:13px;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;">
+                📊 CSAT Dashboard
             </div>
-            <div style="font-size:11px;color:rgba(148,163,184,0.7);margin-top:2px;">
-                고객 만족도 분석
+            <div style="font-size:10px;color:rgba(148,163,184,0.6);margin-top:1px;">
+                고객만족도 분석 시스템
             </div>
         </div>
         """, unsafe_allow_html=True)
 
+        # ════════════════════════════════════
+        # ① 기간 선택 — 사이드바 최상단
+        # ════════════════════════════════════
         st.markdown("""
-        <div style="padding:14px 16px 6px;font-size:10px;
-                    font-weight:800;color:rgba(148,163,184,0.6);
-                    letter-spacing:0.8px;text-transform:uppercase;">
+        <div style="padding:8px 12px 4px;font-size:9px;font-weight:800;
+                    color:rgba(148,163,184,0.55);letter-spacing:1px;
+                    text-transform:uppercase;">
+            📆 기간 선택
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 월 선택
+        if available_months:
+            target_month = st.selectbox(
+                "월(필수)", available_months,
+                index=len(available_months) - 1,
+                key="sel_month",
+            )
+        else:
+            target_month = st.text_input(
+                "월(예: 2026-01)", value="", key="sel_month_txt")
+
+        # 일자 선택
+        available_dates = []
+        if df_scored_all is not None and "회신일" in df_scored_all.columns:
+            available_dates = sorted([
+                str(d) for d in df_scored_all["회신일"].dropna().unique()
+                if str(d) not in MISSING_SET
+            ])
+        selected_date = st.selectbox(
+            "일자(선택)", [""] + available_dates, index=0, key="sel_date")
+        selected_date = selected_date or None
+
+        # 주차 선택
+        available_weeks = []
+        if df_scored_all is not None:
+            week_col = ("회신주차_정제" if "회신주차_정제" in df_scored_all.columns else "회신주차")
+            if week_col in df_scored_all.columns:
+                available_weeks = sorted([
+                    str(w) for w in df_scored_all[week_col].dropna().unique()
+                    if str(w) not in MISSING_SET
+                ])
+        selected_week = st.selectbox(
+            "주차(선택)", [""] + available_weeks, index=0, key="sel_week")
+        selected_week = selected_week or None
+
+        st.markdown(
+            "<hr style='margin:6px 10px 4px;border-color:rgba(255,255,255,0.08);'>",
+            unsafe_allow_html=True,
+        )
+
+        # ════════════════════════════════════
+        # ② 메뉴 — Compact (아이콘 + 짧은 레이블)
+        # ════════════════════════════════════
+        st.markdown("""
+        <div style="padding:4px 12px 3px;font-size:9px;font-weight:800;
+                    color:rgba(148,163,184,0.55);letter-spacing:1px;
+                    text-transform:uppercase;">
             메뉴
         </div>
         """, unsafe_allow_html=True)
@@ -2526,48 +2606,668 @@ def render_sidebar_nav(current_menu: str) -> str:
             st.session_state["menu"] = MENU_ITEMS[0]["key"]
 
         for item in MENU_ITEMS:
-            key   = item["key"]
-            label = item["label"]
+            key      = item["key"]
+            icon     = item["icon"]
+            label    = item["label"]
             is_active = st.session_state["menu"] == key
+            display  = f"{icon} {label}"
 
             if is_active:
                 st.markdown(f"""
-                <div style="margin:1px 8px;padding:9px 14px;
-                            border-radius:8px;
-                            background:rgba(99,102,241,0.2);
-                            border-left:2px solid #6366f1;">
-                    <span style="font-size:13px;font-weight:600;
-                                 color:#a5b4fc;">{label}</span>
+                <div style="margin:1px 6px;padding:6px 10px;
+                            border-radius:6px;
+                            background:rgba(99,102,241,0.22);
+                            border-left:2px solid #6366f1;position:relative;">
+                    <span style="font-size:12px;font-weight:600;
+                                 color:#a5b4fc;">{display}</span>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                <div style="margin:1px 8px;padding:9px 14px;
-                            border-radius:8px;
+                <div style="margin:1px 6px;padding:6px 10px;
+                            border-radius:6px;
                             border-left:2px solid transparent;">
-                    <span style="font-size:13px;font-weight:400;
-                                 color:rgba(203,213,225,0.85);">{label}</span>
+                    <span style="font-size:12px;font-weight:400;
+                                 color:rgba(203,213,225,0.8);">{display}</span>
                 </div>
                 """, unsafe_allow_html=True)
 
-            if st.button(label, key=f"nav_{key}", use_container_width=True):
+            if st.button(display, key=f"nav_{key}", use_container_width=True):
                 st.session_state["menu"] = key
                 st.rerun()
 
         st.markdown(
-            "<hr style='margin:12px 16px;border-color:rgba(255,255,255,0.08);'>",
+            "<hr style='margin:6px 10px 4px;border-color:rgba(255,255,255,0.08);'>",
             unsafe_allow_html=True,
         )
 
-        if st.button("🔄  구글시트 새로고침", use_container_width=True, key="refresh_btn"):
+        # ── 기준 안내 (compact) ──
+        st.markdown(f"""
+        <div style="padding:2px 12px 6px;font-size:9px;
+                    color:rgba(148,163,184,0.5);line-height:1.6;">
+          🟢 양호 ≥{SCORE_GOOD} &nbsp;|&nbsp; 🔴 주의 &lt;{SCORE_CAUTION}
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.button("🔄 새로고침", use_container_width=True, key="refresh_btn"):
             load_from_gsheets.clear()
             st.rerun()
 
-    return st.session_state["menu"]
+    return st.session_state["menu"], target_month, selected_date, selected_week
 
 
 # ══════════════════════════════════════════════════════════════════
-# 15. Streamlit App 메인 (변경 없음)
+# 13-10. 인사이트 (QA강사/센터장 회의용 종합 인사이트)
+# ══════════════════════════════════════════════════════════════════
+def page_insight(df_all, df_scored, df_scored_all, available_months, target_month):
+    page_header("💡 QA 인사이트 리포트",
+                f"센터장·QA팀 회의용 종합 분석  |  기준월: {target_month}")
+
+    df_m     = fm(df_scored,     target_month)
+    df_m_kpi = fm(df_scored_all, target_month)
+    df_m_all = fm_sent(df_all,   target_month)
+
+    # ── 이전월 비교 ──
+    sorted_m  = sorted([m for m in available_months if m <= target_month]) if target_month else []
+    prev_m    = sorted_m[-2] if len(sorted_m) >= 2 else None
+    df_prev   = fm(df_scored_all, prev_m) if prev_m else pd.DataFrame()
+
+    # ── 핵심 KPI 요약 ──
+    section_title("이달의 핵심 지표 요약", "📌")
+    total_sent   = len(df_m_all)
+    total_scored = len(df_m_kpi)
+    resp_rate    = round(total_scored / total_sent * 100, 1) if total_sent > 0 else 0
+    avg_final    = safe_mean(df_m_kpi, "최종점수")
+    avg_kind     = safe_mean(df_m_kpi, "친절점수")
+    avg_satis    = safe_mean(df_m_kpi, "만족점수")
+    prev_final   = safe_mean(df_prev, "최종점수") if not df_prev.empty else None
+    _, d_score_str = calc_mom(avg_final, prev_final, is_pp=False)
+    neg_cnt = len(df_m_kpi[df_m_kpi["긍정부정"] == "부정"]) if "긍정부정" in df_m_kpi.columns else 0
+    pos_cnt = len(df_m_kpi[df_m_kpi["긍정부정"] == "긍정"]) if "긍정부정" in df_m_kpi.columns else 0
+    gap_cnt = len(detect_gaps(df_m_kpi))
+
+    i1, i2, i3, i4, i5 = st.columns(5)
+    with i1: kpi_card("응답건수",  f"{total_scored:,}건")
+    with i2: kpi_card("응답률",    f"{resp_rate}%")
+    with i3: kpi_card("최종점수",  "-" if avg_final is None else f"{avg_final}점", d_score_str, dcol(d_score_str))
+    with i4: kpi_card("긍정 응답", f"{pos_cnt:,}건")
+    with i5: kpi_card("부정 응답", f"{neg_cnt:,}건")
+
+    st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
+
+    # ── 월별 흐름 & 채널별 비교 ──
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        section_title("월별 최종점수 추이 (전체)", "📈")
+        _, monthly_score_df = compute_monthly_trends(df_all, df_scored_all)
+        if not monthly_score_df.empty and "최종점수" in monthly_score_df.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=monthly_score_df["월"], y=monthly_score_df["최종점수"],
+                mode="lines+markers+text",
+                text=monthly_score_df["최종점수"].astype(str),
+                textposition="top center",
+                textfont=dict(size=11, color="#6366f1"),
+                line=dict(color="#6366f1", width=3),
+                marker=dict(size=9, color="#6366f1", line=dict(color="white", width=2)),
+                fill="tozeroy", fillcolor="rgba(99,102,241,0.07)",
+            ))
+            fig.add_hline(y=SCORE_GOOD, line_dash="dash", line_color="#22c55e",
+                          annotation_text="양호(90)", line_width=1.5)
+            fig.add_hline(y=SCORE_CAUTION, line_dash="dash", line_color="#ef4444",
+                          annotation_text="주의(70)", line_width=1.5)
+            fig.update_layout(
+                height=300, margin=dict(l=10,r=80,t=10,b=10),
+                plot_bgcolor="white", paper_bgcolor="white",
+                font=dict(family="Inter, Noto Sans KR", size=12),
+                showlegend=False,
+                xaxis=dict(showgrid=False, tickfont=dict(size=11, color="#64748b")),
+                yaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)",
+                           range=[50, 105], tickfont=dict(size=11, color="#64748b")),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("데이터 없음")
+
+    with col_b:
+        section_title("채널별 점수 비교 (이번 달)", "📡")
+        if "채널_구분" in df_m_kpi.columns:
+            ch_avg = pivot_avg(df_m_kpi, "채널_구분")
+            if not ch_avg.empty and "최종점수" in ch_avg.columns:
+                fig2 = go.Figure(go.Bar(
+                    x=ch_avg["채널_구분"], y=ch_avg["최종점수"],
+                    marker=dict(
+                        color=ch_avg["최종점수"],
+                        colorscale=[[0,"#ef4444"],[0.5,"#f59e0b"],[1,"#22c55e"]],
+                        cmin=60, cmax=100, showscale=False,
+                        line=dict(color="white", width=1),
+                    ),
+                    text=ch_avg["최종점수"].astype(str) + "점",
+                    textposition="outside", textfont=dict(size=12),
+                ))
+                fig2.add_hline(y=SCORE_GOOD, line_dash="dash", line_color="#22c55e", line_width=1.5)
+                fig2.add_hline(y=SCORE_CAUTION, line_dash="dash", line_color="#ef4444", line_width=1.5)
+                fig2.update_layout(
+                    height=300, margin=dict(l=10,r=10,t=10,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR", size=12),
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)", range=[0,110]),
+                    showlegend=False,
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.caption("채널 데이터 없음")
+
+    st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+
+    # ── 브랜드별 성과 비교 ──
+    section_title("브랜드별 성과 비교 (이번 달)", "🏷️")
+    if "브랜드" in df_m_kpi.columns:
+        br_avg = pivot_avg(df_m_kpi, "브랜드")
+        if not br_avg.empty:
+            col_br1, col_br2 = st.columns([1.2, 2])
+            with col_br1:
+                st.dataframe(br_avg, use_container_width=True, hide_index=True)
+            with col_br2:
+                if "최종점수" in br_avg.columns:
+                    fig_br = go.Figure(go.Bar(
+                        x=br_avg["최종점수"], y=br_avg["브랜드"],
+                        orientation="h",
+                        marker=dict(
+                            color=br_avg["최종점수"],
+                            colorscale=[[0,"#ef4444"],[0.5,"#f59e0b"],[1,"#22c55e"]],
+                            cmin=60, cmax=100, showscale=False,
+                            line=dict(color="white", width=0.5),
+                        ),
+                        text=br_avg["최종점수"].astype(str) + "점",
+                        textposition="outside", textfont=dict(size=11),
+                    ))
+                    fig_br.update_layout(
+                        height=max(250, len(br_avg)*34+40),
+                        margin=dict(l=10,r=60,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=12),
+                        xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)", range=[0,110]),
+                        yaxis=dict(showgrid=False, autorange="reversed"),
+                    )
+                    st.plotly_chart(fig_br, use_container_width=True)
+
+    st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+
+    # ── 긍정/부정 트렌드 (월별) ──
+    section_title("월별 긍정/부정 응답 추이", "😊")
+    if "회신월_정제" in df_scored_all.columns and "긍정부정" in df_scored_all.columns:
+        all_months_sorted = sorted([m for m in df_scored_all["회신월_정제"].dropna().unique() if m != "미확인"])
+        sent_rows = []
+        for mo in all_months_sorted:
+            sub = fm(df_scored_all, mo)
+            t = len(sub)
+            if t == 0:
+                continue
+            pos = len(sub[sub["긍정부정"] == "긍정"])
+            neg = len(sub[sub["긍정부정"] == "부정"])
+            neu = len(sub[sub["긍정부정"] == "중립"])
+            sent_rows.append({"월": mo,
+                              "긍정(%)": round(pos/t*100, 1),
+                              "중립(%)": round(neu/t*100, 1),
+                              "부정(%)": round(neg/t*100, 1)})
+        if sent_rows:
+            s_df = pd.DataFrame(sent_rows)
+            fig_s = go.Figure()
+            for col_name, color in [("긍정(%)", "#22c55e"), ("중립(%)", "#f59e0b"), ("부정(%)", "#ef4444")]:
+                if col_name in s_df.columns:
+                    fig_s.add_trace(go.Scatter(
+                        x=s_df["월"], y=s_df[col_name],
+                        mode="lines+markers", name=col_name,
+                        line=dict(color=color, width=2.5),
+                        marker=dict(size=7, color=color, line=dict(color="white", width=2)),
+                    ))
+            fig_s.update_layout(
+                height=280, margin=dict(l=10,r=10,t=10,b=30),
+                plot_bgcolor="white", paper_bgcolor="white",
+                font=dict(family="Inter, Noto Sans KR", size=12),
+                legend=dict(orientation="h", y=-0.3, x=0.5, xanchor="center", font=dict(size=11)),
+                xaxis=dict(showgrid=False, tickfont=dict(size=11, color="#64748b")),
+                yaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)",
+                           tickfont=dict(size=11, color="#64748b"), title="%"),
+            )
+            st.plotly_chart(fig_s, use_container_width=True)
+
+    st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+
+    # ── 이달의 주요 이슈 / 시사점 ──
+    section_title("이달의 주요 이슈 & 시사점", "🚨")
+    act = action_needed(df_m, df_m_all)
+    if act.empty:
+        st.success("✅ 이번 달 특이 이슈 없음 — 전반적으로 양호한 상태입니다.")
+    else:
+        # 우선순위별 색상 구분
+        priority_color = {
+            "🔴 긴급": "background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;",
+            "🟡 주의": "background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;",
+            "🟠 개선": "background:rgba(249,115,22,0.08);border-left:3px solid #f97316;",
+        }
+        for _, row in act.iterrows():
+            style = priority_color.get(row.get("우선순위",""), "background:#f8fafc;border-left:3px solid #64748b;")
+            st.markdown(f"""
+            <div style="{style} padding:10px 16px;border-radius:0 8px 8px 0;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:700;color:#0f172a;">[{row.get('구분','')}] {row.get('항목','')}</span>
+                <span style="font-size:11px;color:#64748b;margin-left:10px;">{row.get('내용','')}</span>
+                <span style="font-size:11px;font-weight:700;float:right;">{row.get('우선순위','')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+
+    # ── 상담사 상태 분포 (신호등) ──
+    section_title("상담사 상태 분포 (신호등)", "🚦")
+    if "상담사" in df_m.columns and "최종점수" in df_m.columns:
+        ag_perf = _agent_filter(df_m).groupby("상담사")["최종점수"].mean().round(1).reset_index()
+        ag_perf.columns = ["상담사", "평균점수"]
+        red_agents   = ag_perf[ag_perf["평균점수"] < SCORE_CAUTION]
+        amber_agents = ag_perf[(ag_perf["평균점수"] >= SCORE_CAUTION) & (ag_perf["평균점수"] < SCORE_GOOD)]
+        green_agents = ag_perf[ag_perf["평균점수"] >= SCORE_GOOD]
+
+        sg1, sg2, sg3 = st.columns(3)
+        with sg1:
+            st.markdown(f"""
+            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);
+                        border-radius:10px;padding:14px 16px;">
+                <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:8px;">
+                    🔴 즉시 코칭 필요 ({len(red_agents)}명) — 70점 미만
+                </div>
+                {"".join([f'<div style="font-size:12px;color:#0f172a;padding:2px 0;">{r["상담사"]} <b>{r["평균점수"]}점</b></div>' for _,r in red_agents.iterrows()]) if not red_agents.empty else '<div style="font-size:12px;color:#64748b;">해당 없음</div>'}
+            </div>
+            """, unsafe_allow_html=True)
+        with sg2:
+            st.markdown(f"""
+            <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);
+                        border-radius:10px;padding:14px 16px;">
+                <div style="font-size:11px;font-weight:700;color:#d97706;margin-bottom:8px;">
+                    🟡 지속 모니터링 ({len(amber_agents)}명) — 70~89점
+                </div>
+                {"".join([f'<div style="font-size:12px;color:#0f172a;padding:2px 0;">{r["상담사"]} <b>{r["평균점수"]}점</b></div>' for _,r in amber_agents.iterrows()]) if not amber_agents.empty else '<div style="font-size:12px;color:#64748b;">해당 없음</div>'}
+            </div>
+            """, unsafe_allow_html=True)
+        with sg3:
+            st.markdown(f"""
+            <div style="background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);
+                        border-radius:10px;padding:14px 16px;">
+                <div style="font-size:11px;font-weight:700;color:#16a34a;margin-bottom:8px;">
+                    🟢 양호 ({len(green_agents)}명) — 90점 이상
+                </div>
+                {"".join([f'<div style="font-size:12px;color:#0f172a;padding:2px 0;">{r["상담사"]} <b>{r["평균점수"]}점</b></div>' for _,r in green_agents.iterrows()]) if not green_agents.empty else '<div style="font-size:12px;color:#64748b;">해당 없음</div>'}
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.caption("상담사/점수 데이터 없음")
+
+
+# ══════════════════════════════════════════════════════════════════
+# 13-11. 교육자료 (QA강사용 코칭 리포트)
+# ══════════════════════════════════════════════════════════════════
+def page_education(df_m, df_scored_all, target_month):
+    page_header("🎓 QA 교육·코칭 자료",
+                f"QA강사 교육 준비용 분석  |  기준월: {target_month}")
+
+    tab_coach, tab_keyword, tab_case, tab_best = st.tabs([
+        "🧑‍🏫 코칭 대상 분석",
+        "🔑 키워드·VOC 패턴",
+        "⚠️ 개선 사례 모음",
+        "🌟 우수 사례 모음",
+    ])
+
+    # ────────────────────────────────────
+    # TAB 1: 코칭 대상 분석
+    # ────────────────────────────────────
+    with tab_coach:
+        section_title("코칭 우선순위 매트릭스", "🎯")
+        st.markdown("""
+        <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
+                    border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:12px;">
+            💡 <b>활용법</b>: 점수가 낮고 응답건수가 많은 상담사를 우선 코칭 대상으로 삼으세요.
+            부정응답 건수와 친절↔만족 갭이 큰 경우 VOC 기반 맞춤 교육이 효과적입니다.
+        </div>
+        """, unsafe_allow_html=True)
+
+        if "상담사" in df_m.columns and "최종점수" in df_m.columns:
+            src = _agent_filter(df_m)
+            coach_df = src.groupby("상담사").agg(
+                평균점수=("최종점수", "mean"),
+                응답건수=("최종점수", "count"),
+                최저점수=("최종점수", "min"),
+            ).round(1).reset_index()
+
+            if "긍정부정" in src.columns:
+                neg_per_agent = src[src["긍정부정"] == "부정"].groupby("상담사").size().reset_index(name="부정건수")
+                coach_df = coach_df.merge(neg_per_agent, on="상담사", how="left")
+                coach_df["부정건수"] = coach_df["부정건수"].fillna(0).astype(int)
+
+            if "친절점수" in src.columns and "만족점수" in src.columns:
+                gap_df = src.copy()
+                gap_df["갭"] = (gap_df["친절점수"] - gap_df["만족점수"]).abs()
+                avg_gap = gap_df.groupby("상담사")["갭"].mean().round(1).reset_index(name="평균갭")
+                coach_df = coach_df.merge(avg_gap, on="상담사", how="left")
+
+            coach_df["코칭등급"] = coach_df["평균점수"].apply(
+                lambda x: "🔴 즉시코칭" if x < SCORE_CAUTION else ("🟡 관찰" if x < SCORE_GOOD else "🟢 양호"))
+            coach_df = coach_df.sort_values("평균점수", ascending=True)
+            st.dataframe(coach_df, use_container_width=True, hide_index=True)
+
+            # 코칭 대상 시각화
+            section_title("상담사별 점수 & 응답건수 버블 차트", "🫧")
+            if not coach_df.empty:
+                fig_bubble = go.Figure()
+                for _, row in coach_df.iterrows():
+                    color = "#ef4444" if row["평균점수"] < SCORE_CAUTION else ("#f59e0b" if row["평균점수"] < SCORE_GOOD else "#22c55e")
+                    fig_bubble.add_trace(go.Scatter(
+                        x=[row["응답건수"]],
+                        y=[row["평균점수"]],
+                        mode="markers+text",
+                        text=[row["상담사"]],
+                        textposition="top center",
+                        textfont=dict(size=10),
+                        marker=dict(
+                            size=max(18, min(50, row["응답건수"] * 2)),
+                            color=color,
+                            opacity=0.75,
+                            line=dict(color="white", width=2),
+                        ),
+                        showlegend=False,
+                        hovertemplate=f"<b>{row['상담사']}</b><br>평균점수: {row['평균점수']}<br>응답건수: {row['응답건수']}<extra></extra>",
+                    ))
+                fig_bubble.add_hline(y=SCORE_GOOD, line_dash="dash", line_color="#22c55e",
+                                     annotation_text="양호(90)", line_width=1.5)
+                fig_bubble.add_hline(y=SCORE_CAUTION, line_dash="dash", line_color="#ef4444",
+                                     annotation_text="주의(70)", line_width=1.5)
+                fig_bubble.update_layout(
+                    height=420,
+                    margin=dict(l=10,r=10,t=10,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR", size=12),
+                    xaxis=dict(title="응답건수", showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                    yaxis=dict(title="평균점수", showgrid=True, gridcolor="rgba(226,232,240,0.6)",
+                               range=[0,110]),
+                )
+                st.plotly_chart(fig_bubble, use_container_width=True)
+        else:
+            st.warning("상담사/점수 데이터가 없습니다.")
+
+        # 근속별 교육 필요도
+        if "근속" in df_m.columns and "최종점수" in df_m.columns:
+            section_title("근속 구간별 평균점수 (교육 필요도)", "📅")
+            tenure_df = pivot_avg(df_m, "근속")
+            if not tenure_df.empty:
+                col_t1, col_t2 = st.columns([1, 2])
+                with col_t1:
+                    st.dataframe(tenure_df, use_container_width=True, hide_index=True)
+                with col_t2:
+                    fig_t = go.Figure(go.Bar(
+                        x=tenure_df["최종점수"] if "최종점수" in tenure_df.columns else [],
+                        y=tenure_df["근속"] if "근속" in tenure_df.columns else [],
+                        orientation="h",
+                        marker=dict(
+                            color=tenure_df["최종점수"] if "최종점수" in tenure_df.columns else [],
+                            colorscale=[[0,"#ef4444"],[0.5,"#f59e0b"],[1,"#22c55e"]],
+                            cmin=60, cmax=100, showscale=False,
+                            line=dict(color="white", width=0.5),
+                        ),
+                        text=(tenure_df["최종점수"].astype(str) + "점") if "최종점수" in tenure_df.columns else [],
+                        textposition="outside", textfont=dict(size=11),
+                    ))
+                    fig_t.add_vline(x=SCORE_GOOD, line_dash="dash", line_color="#22c55e", line_width=1.5)
+                    fig_t.add_vline(x=SCORE_CAUTION, line_dash="dash", line_color="#ef4444", line_width=1.5)
+                    fig_t.update_layout(
+                        height=280, margin=dict(l=10,r=60,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=12),
+                        xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)", range=[0,110]),
+                        yaxis=dict(showgrid=False),
+                    )
+                    st.plotly_chart(fig_t, use_container_width=True)
+
+    # ────────────────────────────────────
+    # TAB 2: 키워드 & VOC 패턴
+    # ────────────────────────────────────
+    with tab_keyword:
+        section_title("이달의 키워드 TOP 30", "🔑")
+        kws = extract_keywords(df_m, 30)
+        if kws:
+            kdf = pd.DataFrame(kws, columns=["키워드","빈도"])
+            fig_kw = go.Figure(go.Bar(
+                x=kdf["빈도"], y=kdf["키워드"],
+                orientation="h",
+                marker=dict(
+                    color=kdf["빈도"],
+                    colorscale=[[0,"rgba(99,102,241,0.25)"],[1,"#6366f1"]],
+                    showscale=False,
+                    line=dict(color="white", width=0.5),
+                ),
+                text=kdf["빈도"], textposition="outside", textfont=dict(size=11),
+            ))
+            fig_kw.update_layout(
+                height=680,
+                margin=dict(l=10,r=40,t=10,b=10),
+                plot_bgcolor="white", paper_bgcolor="white",
+                font=dict(family="Inter, Noto Sans KR", size=12),
+                xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                yaxis=dict(showgrid=False, autorange="reversed"),
+            )
+            st.plotly_chart(fig_kw, use_container_width=True)
+        else:
+            st.caption("키워드 없음 (주관식 컬럼 확인)")
+
+        # 부정 응답 키워드 (별도)
+        section_title("부정 응답 전용 키워드 분석", "🚨")
+        if "긍정부정" in df_m.columns:
+            neg_df = df_m[df_m["긍정부정"] == "부정"]
+            if not neg_df.empty:
+                neg_kws = extract_keywords(neg_df, 20)
+                if neg_kws:
+                    nkdf = pd.DataFrame(neg_kws, columns=["키워드","빈도"])
+                    fig_nk = go.Figure(go.Bar(
+                        x=nkdf["빈도"], y=nkdf["키워드"],
+                        orientation="h",
+                        marker=dict(
+                            color=nkdf["빈도"],
+                            colorscale=[[0,"rgba(239,68,68,0.2)"],[1,"#ef4444"]],
+                            showscale=False,
+                            line=dict(color="white", width=0.5),
+                        ),
+                        text=nkdf["빈도"], textposition="outside", textfont=dict(size=11),
+                    ))
+                    fig_nk.update_layout(
+                        height=460,
+                        margin=dict(l=10,r=40,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=12),
+                        xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                        yaxis=dict(showgrid=False, autorange="reversed"),
+                    )
+                    st.plotly_chart(fig_nk, use_container_width=True)
+            else:
+                st.success("이번 달 부정 응답 없음")
+
+    # ────────────────────────────────────
+    # TAB 3: 개선 사례 (부정 + 저점수)
+    # ────────────────────────────────────
+    with tab_case:
+        section_title("교육 활용 개선 사례 (부정 응답 + 저점수)", "📖")
+        st.markdown("""
+        <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);
+                    border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:12px;">
+            💡 <b>활용법</b>: 아래 사례를 교육 자료로 활용하세요.
+            어떤 상황에서 고객 불만이 발생하는지 패턴을 파악하고,
+            롤플레이 및 사례 학습에 사용하세요.
+        </div>
+        """, unsafe_allow_html=True)
+
+        if "긍정부정" in df_m.columns:
+            neg_cases = df_m[df_m["긍정부정"] == "부정"].copy()
+            if "최종점수" in neg_cases.columns:
+                neg_cases = neg_cases.sort_values("최종점수", ascending=True)
+
+            if neg_cases.empty:
+                st.success("이번 달 부정 응답 없음 — 우수한 달입니다!")
+            else:
+                # 유형별 부정 분포
+                for gcol in ["상담유형대","채널_구분","브랜드"]:
+                    if gcol in neg_cases.columns:
+                        dist = neg_cases[gcol].value_counts().reset_index()
+                        dist.columns = [gcol, "부정건수"]
+                        col_d1, col_d2 = st.columns([1, 2])
+                        with col_d1:
+                            st.markdown(f"**{gcol}별 부정 분포**")
+                            st.dataframe(dist, use_container_width=True, hide_index=True)
+                        with col_d2:
+                            fig_d = go.Figure(go.Bar(
+                                x=dist["부정건수"], y=dist[gcol],
+                                orientation="h",
+                                marker=dict(color="#ef4444", opacity=0.8,
+                                            line=dict(color="white", width=0.5)),
+                                text=dist["부정건수"], textposition="outside",
+                            ))
+                            fig_d.update_layout(
+                                height=max(180, len(dist)*38+40),
+                                margin=dict(l=10,r=40,t=4,b=4),
+                                plot_bgcolor="white", paper_bgcolor="white",
+                                font=dict(family="Inter, Noto Sans KR", size=11),
+                                xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                                yaxis=dict(showgrid=False, autorange="reversed"),
+                            )
+                            st.plotly_chart(fig_d, use_container_width=True)
+                        break  # 첫 번째 유형만 표시 후 break
+
+                # 사례 목록 (교육용 테이블)
+                st.markdown(f"**📋 개선 사례 전체 목록 ({len(neg_cases)}건)**")
+                preferred = ["회신일","상담사","브랜드","채널_구분","상담유형대",
+                             "친절점수","만족점수","최종점수","주관식","긍정부정"]
+                cols_disp = get_display_cols(neg_cases, preferred)
+                st.dataframe(neg_cases[cols_disp].reset_index(drop=True),
+                             use_container_width=True, hide_index=True)
+
+        # 저점수(70~89) 사례
+        if "최종점수" in df_m.columns:
+            mid_cases = df_m[
+                (df_m["최종점수"] >= SCORE_CAUTION) &
+                (df_m["최종점수"] < SCORE_GOOD)
+            ].copy()
+            if not mid_cases.empty:
+                section_title(f"관찰 구간(70~89점) 사례 ({len(mid_cases)}건)", "🟡")
+                preferred2 = ["회신일","상담사","브랜드","채널_구분",
+                              "친절점수","만족점수","최종점수","주관식","긍정부정"]
+                cols_disp2 = get_display_cols(mid_cases, preferred2)
+                st.dataframe(
+                    mid_cases.sort_values("최종점수")[cols_disp2].reset_index(drop=True),
+                    use_container_width=True, hide_index=True
+                )
+
+    # ────────────────────────────────────
+    # TAB 4: 우수 사례 (Best Practice)
+    # ────────────────────────────────────
+    with tab_best:
+        section_title("교육 활용 우수 사례 (긍정 + 고점수)", "🌟")
+        st.markdown("""
+        <div style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);
+                    border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:12px;">
+            💡 <b>활용법</b>: 우수 사례를 공유하고 칭찬 문화를 만들어보세요.
+            어떤 응대 방식이 고객 만족을 이끄는지 분석하고,
+            이를 교육 표준 스크립트 개발에 활용하세요.
+        </div>
+        """, unsafe_allow_html=True)
+
+        if "긍정부정" in df_m.columns and "최종점수" in df_m.columns:
+            best_cases = df_m[
+                (df_m["긍정부정"] == "긍정") &
+                (df_m["최종점수"] >= SCORE_GOOD)
+            ].copy().sort_values("최종점수", ascending=False)
+
+            if best_cases.empty:
+                st.info("이번 달 우수 사례 데이터가 없습니다.")
+            else:
+                # 우수 상담사 TOP
+                section_title(f"우수 상담사 TOP (긍정+90점↑ 기준, {len(best_cases)}건)", "🏆")
+                if "상담사" in best_cases.columns:
+                    best_ag = (best_cases.groupby("상담사")
+                                .agg(우수건수=("최종점수","count"),
+                                     평균점수=("최종점수","mean"))
+                                .round(1).sort_values("우수건수", ascending=False)
+                                .reset_index())
+                    col_b1, col_b2 = st.columns([1, 2])
+                    with col_b1:
+                        st.dataframe(best_ag, use_container_width=True, hide_index=True)
+                    with col_b2:
+                        fig_best = go.Figure(go.Bar(
+                            x=best_ag["우수건수"],
+                            y=best_ag["상담사"],
+                            orientation="h",
+                            marker=dict(
+                                color=best_ag["평균점수"],
+                                colorscale=[[0,"rgba(34,197,94,0.3)"],[1,"#22c55e"]],
+                                cmin=90, cmax=100, showscale=False,
+                                line=dict(color="white", width=0.5),
+                            ),
+                            text=best_ag["우수건수"].astype(str) + "건",
+                            textposition="outside", textfont=dict(size=11),
+                        ))
+                        fig_best.update_layout(
+                            height=max(250, len(best_ag)*34+40),
+                            margin=dict(l=10,r=60,t=10,b=10),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            font=dict(family="Inter, Noto Sans KR", size=12),
+                            xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                            yaxis=dict(showgrid=False, autorange="reversed"),
+                        )
+                        st.plotly_chart(fig_best, use_container_width=True)
+
+                # 우수 사례 원문
+                section_title("우수 VOC 원문 (교육 활용)", "💬")
+                voc_col = "주관식" if "주관식" in best_cases.columns else None
+                if voc_col:
+                    best_voc = best_cases[best_cases[voc_col].notna() &
+                                          (best_cases[voc_col].astype(str).str.strip() != "")]
+                    preferred_b = ["회신일","상담사","브랜드","채널_구분",
+                                   "친절점수","만족점수","최종점수","주관식"]
+                    cols_b = get_display_cols(best_voc, preferred_b)
+                    st.dataframe(best_voc[cols_b].reset_index(drop=True),
+                                 use_container_width=True, hide_index=True)
+                else:
+                    st.caption("주관식 컬럼 없음")
+
+        # 우수 키워드
+        if "긍정부정" in df_m.columns:
+            pos_df_e = df_m[df_m["긍정부정"] == "긍정"]
+            if not pos_df_e.empty:
+                section_title("긍정 응답 키워드 (표준 스크립트 참고)", "✨")
+                pos_kws = extract_keywords(pos_df_e, 20)
+                if pos_kws:
+                    pkdf = pd.DataFrame(pos_kws, columns=["키워드","빈도"])
+                    fig_pk = go.Figure(go.Bar(
+                        x=pkdf["빈도"], y=pkdf["키워드"],
+                        orientation="h",
+                        marker=dict(
+                            color=pkdf["빈도"],
+                            colorscale=[[0,"rgba(34,197,94,0.25)"],[1,"#22c55e"]],
+                            showscale=False,
+                            line=dict(color="white", width=0.5),
+                        ),
+                        text=pkdf["빈도"], textposition="outside", textfont=dict(size=11),
+                    ))
+                    fig_pk.update_layout(
+                        height=460,
+                        margin=dict(l=10,r=40,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=12),
+                        xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                        yaxis=dict(showgrid=False, autorange="reversed"),
+                    )
+                    st.plotly_chart(fig_pk, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 15. Streamlit App 메인 (개선)
 # ══════════════════════════════════════════════════════════════════
 def main():
     st.set_page_config(
@@ -2581,10 +3281,6 @@ def main():
     # ── 세션 상태 초기화 ──
     if "menu" not in st.session_state:
         st.session_state["menu"] = "개요"
-
-    # ── 사이드바 네비게이션 ──
-    selected_menu = render_sidebar_nav(st.session_state["menu"])
-    st.session_state["menu"] = selected_menu
 
     # ── 데이터 로드 ──
     try:
@@ -2610,67 +3306,14 @@ def main():
         st.exception(e)
         return
 
-    # ── 기간 선택 (사이드바) ──
-    MISSING_SET = {"", "nan", "NaT", "None", "NaN", "<NA>", "NA"}
-
-    st.sidebar.markdown(
-        '<div style="padding:10px 16px 4px;font-size:10px;font-weight:800;'
-        'color:rgba(148,163,184,0.6);letter-spacing:0.8px;'
-        'text-transform:uppercase;">기간 선택</div>',
-        unsafe_allow_html=True,
+    # ── 사이드바 (기간선택 상단 포함) ──
+    selected_menu, target_month, selected_date, selected_week = render_sidebar_nav(
+        st.session_state["menu"],
+        available_months=available_months,
+        df_scored_all=df_scored_all,
+        df_all=df_all,
     )
-
-    st.sidebar.markdown(
-        '<div style="padding:0 8px;">',
-        unsafe_allow_html=True,
-    )
-
-    if available_months:
-        target_month = st.sidebar.selectbox(
-            "월(필수)", available_months,
-            index=len(available_months) - 1,
-            key="sel_month",
-        )
-    else:
-        target_month = st.sidebar.text_input(
-            "월(예: 2026-01)", value="", key="sel_month_txt")
-
-    available_dates = sorted([
-        str(d) for d in df_scored_all.get(
-            "회신일", pd.Series([])).dropna().unique()
-        if str(d) not in MISSING_SET
-    ]) if "회신일" in df_scored_all.columns else []
-
-    week_col = ("회신주차_정제"
-                if "회신주차_정제" in df_scored_all.columns
-                else "회신주차")
-    available_weeks = sorted([
-        str(w) for w in df_scored_all.get(
-            week_col, pd.Series([])).dropna().unique()
-        if str(w) not in MISSING_SET
-    ]) if week_col in df_scored_all.columns else []
-
-    selected_date = st.sidebar.selectbox(
-        "일자(선택)", [""] + available_dates, index=0, key="sel_date")
-    selected_date = selected_date or None
-
-    selected_week = st.sidebar.selectbox(
-        "주차(선택)", [""] + available_weeks, index=0, key="sel_week")
-    selected_week = selected_week or None
-
-    st.sidebar.markdown("</div>", unsafe_allow_html=True)
-
-    st.sidebar.markdown(
-        "<hr style='margin:10px 16px;border-color:rgba(255,255,255,0.08);'>",
-        unsafe_allow_html=True,
-    )
-    st.sidebar.markdown(f"""
-    <div style="padding:6px 16px 12px;font-size:10px;
-                color:rgba(148,163,184,0.55);line-height:1.7;">
-      주의 &lt; {SCORE_CAUTION} &nbsp;/&nbsp; 양호 ≥ {SCORE_GOOD}<br>
-      제외: {', '.join(sorted(EXCLUDED_AGENTS))}
-    </div>
-    """, unsafe_allow_html=True)
+    st.session_state["menu"] = selected_menu
 
     # ── 월 기준 df_m ──
     df_m     = fm(df_scored,   target_month)
@@ -2683,7 +3326,7 @@ def main():
         page_overview(df_all, df_scored, df_scored_all, available_months,
                       target_month, selected_date, selected_week)
 
-    elif menu == "일자·주차":
+    elif menu == "일자/주차":
         page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week)
 
     elif menu == "점수분석":
@@ -2706,6 +3349,12 @@ def main():
 
     elif menu == "검색":
         page_search(df_scored_all, df_all)
+
+    elif menu == "인사이트":
+        page_insight(df_all, df_scored, df_scored_all, available_months, target_month)
+
+    elif menu == "교육자료":
+        page_education(df_m, df_scored_all, target_month)
 
 
 if __name__ == "__main__":
