@@ -2460,141 +2460,7 @@ def page_verbatim(df_m):
             cols = get_display_cols(neg, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식"])
             st.dataframe(neg[cols], use_container_width=True, hide_index=True)
 
-    # ══════════════════════════════════════════════════════════════
-    # ✅ 수동 부정 라벨링 섹션
-    # ══════════════════════════════════════════════════════════════
-    st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
-    section_title("🏷️ 수동 부정 지정 (강사 직접 라벨링)", "📝")
 
-    st.markdown("""
-    <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);
-                border-radius:8px;padding:12px 16px;font-size:12px;color:#0f172a;margin-bottom:12px;">
-        💡 <b>사용법</b>: 아래 전체 주관식 목록에서 <b>부정으로 봐야 할 행에 체크</b>하면,
-        Google Sheets의 <b>'수동부정라벨' 시트</b>에 자동 저장되고
-        이후 모든 분석(개요·점수·히트맵 등)에 <b>즉시 반영</b>됩니다.
-        <br>한 번 저장된 라벨은 영구 유지되며 새로운 항목은 누적됩니다.
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_vbt = "주관식" if "주관식" in df_m.columns else None
-    if not col_vbt:
-        st.caption("주관식 컬럼 없음")
-        return
-
-    vbt = df_m[df_m[col_vbt].notna() & (df_m[col_vbt].astype(str).str.strip() != "")].copy()
-
-    # 현재 수동 라벨 로드
-    current_manual_keys = load_manual_neg_labels()
-
-    # 표시할 컬럼 선택
-    display_cols = get_display_cols(vbt, ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"])
-
-    # 이미 수동 부정인 행 표시용 컬럼 추가
-    vbt["수동부정여부"] = ""
-    if "상담KEY" in vbt.columns:
-        vbt.loc[vbt["상담KEY"].astype(str).isin(current_manual_keys), "수동부정여부"] = "✅ 수동지정"
-    display_cols_final = ["수동부정여부"] + [c for c in display_cols if c != "수동부정여부"]
-
-    # ── 필터: 전체 / 중립만 / 긍정만 / 수동지정만 ──
-    filter_opt = st.radio(
-        "표시 필터",
-        ["전체", "중립만 (애매한 건)", "긍정만", "이미 수동지정된 건"],
-        horizontal=True,
-        key="vbt_filter",
-    )
-    if filter_opt == "중립만 (애매한 건)":
-        vbt_show = vbt[vbt["긍정부정"] == "중립"].copy()
-    elif filter_opt == "긍정만":
-        vbt_show = vbt[vbt["긍정부정"] == "긍정"].copy()
-    elif filter_opt == "이미 수동지정된 건":
-        vbt_show = vbt[vbt["수동부정여부"] == "✅ 수동지정"].copy()
-    else:
-        vbt_show = vbt.copy()
-
-    if vbt_show.empty:
-        st.info("해당 조건의 데이터가 없습니다.")
-    else:
-        st.caption(f"총 {len(vbt_show)}건 표시 중 — 부정으로 지정할 행을 아래에서 선택하세요.")
-
-        # ── 행 선택 방식: 상담KEY 또는 index 사용 ──
-        use_key_col = "상담KEY" in vbt_show.columns
-
-        # 선택 가능한 항목 목록 (라벨: 날짜+상담사+주관식 앞 20자)
-        def make_label(row):
-            date_part  = str(row.get("회신일",""))[:10]
-            agent_part = str(row.get("상담사",""))
-            text_part  = str(row.get("주관식",""))[:25].replace("\n"," ")
-            score_part = str(row.get("최종점수",""))
-            sent_part  = str(row.get("긍정부정",""))
-            already    = " ✅" if row.get("수동부정여부","") == "✅ 수동지정" else ""
-            return f"[{sent_part}|{score_part}점] {date_part} {agent_part} — {text_part}...{already}"
-
-        option_labels = vbt_show.apply(make_label, axis=1).tolist()
-        if use_key_col:
-            option_keys = vbt_show["상담KEY"].astype(str).tolist()
-        else:
-            option_keys = vbt_show.index.astype(str).tolist()
-
-        # key↔label 매핑
-        key_label_map = dict(zip(option_labels, option_keys))
-
-        selected_labels = st.multiselect(
-            "부정으로 지정할 항목 선택 (다중 선택 가능)",
-            options=option_labels,
-            key="manual_neg_select",
-            help="중립·긍정으로 분류됐지만 실제로는 부정인 건을 선택하세요.",
-        )
-
-        # 전체 목록 테이블도 표시
-        with st.expander("📋 전체 주관식 목록 보기", expanded=False):
-            st.dataframe(
-                vbt_show[display_cols_final].reset_index(drop=True),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        # ── 저장 버튼 ──
-        if selected_labels:
-            selected_keys = [key_label_map[lbl] for lbl in selected_labels]
-            st.markdown(f"""
-            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);
-                        border-radius:8px;padding:10px 14px;font-size:12px;color:#0f172a;margin:8px 0;">
-                선택된 <b>{len(selected_keys)}건</b>을 부정으로 저장합니다.
-                저장 후 페이지가 새로고침되며 모든 분석에 즉시 반영됩니다.
-            </div>
-            """, unsafe_allow_html=True)
-
-            col_save, col_cancel = st.columns([1, 4])
-            with col_save:
-                if st.button("💾 부정으로 저장", type="primary", key="save_manual_neg"):
-                    success = save_manual_neg_labels(selected_keys)
-                    if success:
-                        st.success(f"✅ {len(selected_keys)}건이 '수동부정라벨' 시트에 저장되었습니다!")
-                        # 캐시 클리어 후 재실행
-                        load_from_gsheets.clear()
-                        st.rerun()
-                    else:
-                        st.error("저장에 실패했습니다. Google Sheets 연결을 확인하세요.")
-
-    # ── 수동 부정 목록 현황 ──
-    if current_manual_keys:
-        with st.expander(f"🗂️ 현재 수동 부정 지정 목록 ({len(current_manual_keys)}건)", expanded=False):
-            st.markdown("""
-            <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
-                아래는 지금까지 강사가 수동으로 지정한 부정 라벨입니다.
-                수정이 필요하면 Google Sheets의 '수동부정라벨' 시트를 직접 편집하세요.
-            </div>
-            """, unsafe_allow_html=True)
-            if "상담KEY" in df_m.columns:
-                labeled_in_month = df_m[df_m["상담KEY"].astype(str).isin(current_manual_keys)]
-                if not labeled_in_month.empty:
-                    dcols = get_display_cols(labeled_in_month, ["회신일","상담사","브랜드","최종점수","주관식"])
-                    st.dataframe(labeled_in_month[dcols].reset_index(drop=True),
-                                 use_container_width=True, hide_index=True)
-                else:
-                    st.caption("이번 달에 해당하는 수동 지정 건 없음 (다른 달에 있을 수 있음)")
-            else:
-                st.caption(f"상담KEY 컬럼이 없어 목록 표시 불가 — 총 {len(current_manual_keys)}건 등록됨")
 
 
 # ── 13-5. 통합분석(히트맵) (그래프 개선) ─────────────────────────
@@ -2793,6 +2659,152 @@ def page_daily_agent(df_m):
         yaxis=dict(showgrid=False, autorange="reversed"),
     )
     st.plotly_chart(fig2, use_container_width=True)
+
+    # ── 상담사별 감성·의도 세부 평가 ──
+    st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
+    section_title("상담사별 감성·의도 세부 평가", "🔍")
+    st.markdown("""
+    <div style="background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);
+                border-radius:8px;padding:10px 14px;font-size:12px;color:#0f172a;margin-bottom:12px;">
+        💡 각 상담사의 긍정/중립/부정 건수와 주요 의도 유형을 확인하세요.
+        부정 비율이 높거나 특정 의도에 집중된 경우 맞춤 코칭이 필요합니다.
+    </div>
+    """, unsafe_allow_html=True)
+
+    sent_col_da  = "긍정부정"
+    intent_col_da = "의도분류"
+    voc_col_da   = next((c for c in ["주관식","verbatim","Q3","의견"] if c in df_v.columns), None)
+
+    if sent_col_da in df_v.columns and "상담사" in df_v.columns:
+        # 상담사별 감성 집계
+        agent_sent = df_v.groupby(["상담사", sent_col_da]).size().unstack(fill_value=0)
+        for lbl in ["긍정","중립","부정"]:
+            if lbl not in agent_sent.columns:
+                agent_sent[lbl] = 0
+        agent_sent = agent_sent[["긍정","중립","부정"]].reset_index()
+        agent_sent["합계"] = agent_sent[["긍정","중립","부정"]].sum(axis=1)
+        agent_sent["부정률(%)"] = (agent_sent["부정"] / agent_sent["합계"] * 100).round(1)
+        agent_sent["긍정률(%)"] = (agent_sent["긍정"] / agent_sent["합계"] * 100).round(1)
+        agent_sent = agent_sent.sort_values("부정률(%)", ascending=False)
+
+        # 스택 바 차트 (상담사별 감성 분포)
+        fig_as = go.Figure()
+        for lbl, color in [("부정","#ef4444"),("중립","#f59e0b"),("긍정","#22c55e")]:
+            fig_as.add_trace(go.Bar(
+                x=agent_sent[lbl], y=agent_sent["상담사"],
+                orientation="h", name=lbl,
+                marker=dict(color=color, opacity=0.85, line=dict(color="white",width=0.5)),
+                text=agent_sent[lbl].apply(lambda v: str(v) if v > 0 else ""),
+                textposition="inside", insidetextanchor="middle",
+                textfont=dict(size=10, color="white"),
+            ))
+        fig_as.update_layout(
+            barmode="stack",
+            height=max(300, len(agent_sent)*34+40),
+            margin=dict(l=10,r=100,t=10,b=10),
+            plot_bgcolor="white", paper_bgcolor="white",
+            font=dict(family="Inter, Noto Sans KR", size=12),
+            xaxis=dict(title="건수", showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+            yaxis=dict(showgrid=False, autorange="reversed"),
+            legend=dict(orientation="v", x=1.02, y=0.5),
+        )
+        st.plotly_chart(fig_as, use_container_width=True)
+
+        # 상담사별 테이블 (부정률 포함)
+        st.dataframe(agent_sent.reset_index(drop=True), use_container_width=True, hide_index=True)
+
+        # 상담사 선택 → 세부 의도 드릴다운
+        st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+        section_title("상담사 드릴다운 (개인별 의도·VOC)", "🔎")
+        agents_list = agent_sent["상담사"].tolist()
+        sel_agent = st.selectbox(
+            "상담사 선택", agents_list,
+            key="agent_drilldown_sel",
+            help="선택한 상담사의 의도 분포와 VOC 원문을 확인합니다."
+        )
+        if sel_agent:
+            agt_df = df_v[df_v["상담사"] == sel_agent].copy()
+
+            # KPI 카드
+            a_total = len(agt_df)
+            a_pos   = len(agt_df[agt_df[sent_col_da] == "긍정"]) if sent_col_da in agt_df.columns else 0
+            a_neu   = len(agt_df[agt_df[sent_col_da] == "중립"]) if sent_col_da in agt_df.columns else 0
+            a_neg   = len(agt_df[agt_df[sent_col_da] == "부정"]) if sent_col_da in agt_df.columns else 0
+            a_avg   = round(agt_df["최종점수"].mean(), 1) if "최종점수" in agt_df.columns else "-"
+            a1, a2, a3, a4, a5 = st.columns(5)
+            with a1: kpi_card("응답건수",  f"{a_total}건")
+            with a2: kpi_card("평균점수",  f"{a_avg}점" if a_avg != "-" else "-")
+            with a3: kpi_card("긍정",      f"{a_pos}건", f"{round(a_pos/a_total*100,1)}%" if a_total else "-", C_GREEN)
+            with a4: kpi_card("중립",      f"{a_neu}건", f"{round(a_neu/a_total*100,1)}%" if a_total else "-", C_AMBER)
+            with a5: kpi_card("부정",      f"{a_neg}건", f"{round(a_neg/a_total*100,1)}%" if a_total else "-", C_RED)
+
+            st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+
+            # 의도 분포
+            if intent_col_da in agt_df.columns:
+                intent_counter = Counter()
+                for v in agt_df[intent_col_da].dropna():
+                    for i in str(v).split(","):
+                        if i.strip():
+                            intent_counter[i.strip()] += 1
+
+                if intent_counter:
+                    d1, d2 = st.columns([2, 1])
+                    with d1:
+                        section_title("의도 분포", "🎯")
+                        intent_items = intent_counter.most_common()
+                        fig_ad = go.Figure(go.Bar(
+                            x=[v for _, v in intent_items],
+                            y=[k for k, _ in intent_items],
+                            orientation="h",
+                            marker=dict(color="#6366f1", opacity=0.8,
+                                        line=dict(color="white", width=0.5)),
+                            text=[v for _, v in intent_items],
+                            textposition="outside",
+                        ))
+                        fig_ad.update_layout(
+                            height=max(200, len(intent_items)*36+40),
+                            margin=dict(l=10,r=40,t=10,b=10),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            font=dict(family="Inter, Noto Sans KR", size=12),
+                            xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                            yaxis=dict(showgrid=False, autorange="reversed"),
+                        )
+                        st.plotly_chart(fig_ad, use_container_width=True)
+                    with d2:
+                        section_title("의도 × 감성", "🔀")
+                        if sent_col_da in agt_df.columns:
+                            # 부정 의도만 표시
+                            neg_agt = agt_df[agt_df[sent_col_da] == "부정"].copy()
+                            if not neg_agt.empty:
+                                neg_ic = Counter()
+                                for v in neg_agt[intent_col_da].dropna():
+                                    for i in str(v).split(","):
+                                        if i.strip():
+                                            neg_ic[i.strip()] += 1
+                                neg_ic_df = pd.DataFrame(neg_ic.most_common(),
+                                    columns=["부정의도","건수"])
+                                st.dataframe(neg_ic_df, use_container_width=True, hide_index=True)
+                            else:
+                                st.success("부정 응답 없음")
+
+            # VOC 원문 탭 (감성별)
+            section_title("VOC 원문 (감성별)", "💬")
+            if voc_col_da and voc_col_da in agt_df.columns:
+                voc_tab1, voc_tab2, voc_tab3 = st.tabs(["😊 긍정", "😐 중립", "😞 부정"])
+                for vtab, vlbl in [(voc_tab1,"긍정"),(voc_tab2,"중립"),(voc_tab3,"부정")]:
+                    with vtab:
+                        vdf = agt_df[agt_df[sent_col_da] == vlbl] if sent_col_da in agt_df.columns else agt_df
+                        vdf = vdf[vdf[voc_col_da].notna() & (vdf[voc_col_da].astype(str).str.strip()!="")]
+                        if vdf.empty:
+                            st.caption(f"{vlbl} 응답 없음")
+                        else:
+                            dcols_v = get_display_cols(vdf,
+                                ["회신일","최종점수","주관식","의도분류","분류신뢰도"])
+                            st.dataframe(vdf[dcols_v].reset_index(drop=True),
+                                         use_container_width=True, hide_index=True)
+    else:
+        st.info("감성 분류 컬럼이 없습니다. (주관식 데이터 필요)")
 
     if "채널_구분" in df_v.columns:
         section_title("일자별 채널별 응답 건수", "📡")
@@ -3548,12 +3560,11 @@ def page_education(df_m, df_scored_all, target_month):
     page_header("🎓 QA 교육·코칭 자료",
                 f"QA강사 교육 준비용 분석  |  기준월: {target_month}")
 
-    tab_coach, tab_keyword, tab_case, tab_best, tab_sentiment = st.tabs([
+    tab_coach, tab_keyword, tab_case, tab_best = st.tabs([
         "🧑‍🏫 코칭 대상 분석",
         "🔑 키워드·VOC 패턴",
         "⚠️ 개선 사례 모음",
         "🌟 우수 사례 모음",
-        "🔬 감성 정확도 검토",
     ])
 
     # ────────────────────────────────────
@@ -3868,8 +3879,23 @@ def page_education(df_m, df_scored_all, target_month):
                     preferred_b = ["회신일","상담사","브랜드","채널_구분",
                                    "친절점수","만족점수","최종점수","주관식"]
                     cols_b = get_display_cols(best_voc, preferred_b)
-                    st.dataframe(best_voc[cols_b].reset_index(drop=True),
-                                 use_container_width=True, hide_index=True)
+                    export_df = best_voc[cols_b].reset_index(drop=True)
+                    st.dataframe(export_df, use_container_width=True, hide_index=True)
+                    # ── 엑셀 다운로드 ──
+                    try:
+                        import io
+                        _buf = io.BytesIO()
+                        with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
+                            export_df.to_excel(_writer, index=False, sheet_name="우수VOC")
+                        st.download_button(
+                            label="⬇️ 엑셀 다운로드 (.xlsx)",
+                            data=_buf.getvalue(),
+                            file_name=f"우수VOC_{target_month}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_best_voc",
+                        )
+                    except Exception as _e:
+                        st.caption(f"엑셀 내보내기 오류: {_e} (openpyxl 설치 필요)")
                 else:
                     st.caption("주관식 컬럼 없음")
 
@@ -3901,312 +3927,6 @@ def page_education(df_m, df_scored_all, target_month):
                         yaxis=dict(showgrid=False, autorange="reversed"),
                     )
                     st.plotly_chart(fig_pk, use_container_width=True)
-
-
-    # ────────────────────────────────────
-    # TAB 5: 감성 정확도 검토
-    # ────────────────────────────────────
-    with tab_sentiment:
-        page_header_sub = "점수와 감성 분류의 불일치를 자동 탐지하여 분류 규칙 개선 포인트를 제안합니다."
-        st.markdown(f"""
-        <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
-                    border-radius:8px;padding:12px 16px;font-size:12px;color:#0f172a;margin-bottom:16px;">
-            🔬 <b>감성 정확도 검토란?</b><br>
-            {page_header_sub}<br><br>
-            <b>원리</b>: 최종점수는 고객이 직접 준 '사실' 데이터입니다.
-            <span style="color:#dc2626;font-weight:700;">점수가 낮은데 긍정으로 분류</span>되거나,
-            <span style="color:#16a34a;font-weight:700;">점수가 높은데 부정으로 분류</span>된 경우를 찾아내어
-            빠진 패턴을 발굴합니다.
-        </div>
-        """, unsafe_allow_html=True)
-
-        voc_col = "주관식" if "주관식" in df_scored_all.columns else None
-        score_col = "최종점수" if "최종점수" in df_scored_all.columns else None
-        sent_col = "긍정부정" if "긍정부정" in df_scored_all.columns else None
-
-        if not voc_col or not score_col or not sent_col:
-            st.warning("주관식, 최종점수, 긍정부정 컬럼이 모두 필요합니다.")
-        else:
-            src = df_scored_all[
-                df_scored_all[voc_col].notna() &
-                (df_scored_all[voc_col].astype(str).str.strip() != "") &
-                df_scored_all[score_col].notna() &
-                df_scored_all[sent_col].notna()
-            ].copy()
-            src[score_col] = pd.to_numeric(src[score_col], errors="coerce")
-            src = src.dropna(subset=[score_col])
-
-            # ── 불일치 케이스 정의 ──
-            # A: 점수 ≤ 70인데 긍정 분류 → "놓친 부정" (가장 중요)
-            missed_neg = src[(src[score_col] <= 70) & (src[sent_col] == "긍정")].copy()
-            # B: 점수 ≥ 90인데 부정 분류 → "과도한 부정"
-            over_neg   = src[(src[score_col] >= 90) & (src[sent_col] == "부정")].copy()
-            # C: 텍스트 있는데 중립 분류 + 점수 극단값
-            missed_mid_neg = src[(src[score_col] <= 70) & (src[sent_col] == "중립")].copy()
-            missed_mid_pos = src[(src[score_col] >= 95) & (src[sent_col] == "중립")].copy()
-
-            # ── 요약 KPI ──
-            total = len(src)
-            section_title("불일치 현황 요약", "")
-            k1, k2, k3, k4 = st.columns(4)
-            with k1:
-                rate_a = round(len(missed_neg)/total*100, 1) if total > 0 else 0
-                kpi_card("놓친 부정", f"{len(missed_neg)}건",
-                         f"저점수({rate_a}%)", "#dc2626")
-            with k2:
-                rate_b = round(len(over_neg)/total*100, 1) if total > 0 else 0
-                kpi_card("과도한 부정", f"{len(over_neg)}건",
-                         f"고점수({rate_b}%)", "#d97706")
-            with k3:
-                rate_c = round(len(missed_mid_neg)/total*100, 1) if total > 0 else 0
-                kpi_card("미분류 부정", f"{len(missed_mid_neg)}건",
-                         f"저점수중립({rate_c}%)", "#ef4444")
-            with k4:
-                total_issue = len(missed_neg) + len(over_neg) + len(missed_mid_neg)
-                accuracy = round((total - total_issue) / total * 100, 1) if total > 0 else 0
-                kpi_card("추정 정확도", f"{accuracy}%",
-                         f"전체 {total}건 기준", "#6366f1")
-
-            st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
-
-            # ── 탭별 상세 분석 ──
-            sub_a, sub_b, sub_c, sub_d = st.tabs([
-                f"🔴 놓친 부정 ({len(missed_neg)}건)",
-                f"🟡 과도한 부정 ({len(over_neg)}건)",
-                f"⬜ 미분류 부정 ({len(missed_mid_neg)}건)",
-                f"📊 점수-감성 분포",
-            ])
-
-            def extract_candidate_patterns(texts, top_n=25):
-                """텍스트에서 자주 등장하는 2~3어절 표현 추출"""
-                bigram_counter = {}
-                trigram_counter = {}
-                for text in texts:
-                    text = str(text)
-                    words = re.findall(r"[가-힣]{2,}", text)
-                    # bigram
-                    for i in range(len(words)-1):
-                        gram = f"{words[i]} {words[i+1]}"
-                        bigram_counter[gram] = bigram_counter.get(gram, 0) + 1
-                    # trigram
-                    for i in range(len(words)-2):
-                        gram = f"{words[i]} {words[i+1]} {words[i+2]}"
-                        trigram_counter[gram] = trigram_counter.get(gram, 0) + 1
-                # 빈도 2 이상만
-                merged = {**{k: v for k, v in bigram_counter.items() if v >= 2},
-                          **{k: v for k, v in trigram_counter.items() if v >= 2}}
-                return sorted(merged.items(), key=lambda x: -x[1])[:top_n]
-
-            # ── SUB A: 놓친 부정 ──
-            with sub_a:
-                st.markdown("""
-                <div style="background:rgba(239,68,68,0.06);border-left:3px solid #ef4444;
-                            border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;
-                            color:#0f172a;margin-bottom:12px;">
-                    <b>정의</b>: 최종점수 ≤ 70인데 '긍정'으로 분류된 케이스<br>
-                    <b>의미</b>: 고객이 낮은 점수를 줬는데 텍스트는 긍정으로 잘못 읽은 것 →
-                    이 텍스트에서 자주 등장하는 표현이 <b>추가해야 할 부정 패턴</b>입니다.
-                </div>
-                """, unsafe_allow_html=True)
-
-                if missed_neg.empty:
-                    st.success("놓친 부정 없음 — 저점수 응답을 잘 잡고 있습니다!")
-                else:
-                    col_pat, col_list = st.columns([1, 1.6])
-                    with col_pat:
-                        section_title("자주 등장하는 표현 (패턴 후보)", "")
-                        patterns = extract_candidate_patterns(missed_neg[voc_col])
-                        if patterns:
-                            pat_df = pd.DataFrame(patterns, columns=["표현", "등장횟수"])
-                            pat_df["→ 규칙 제안"] = pat_df["표현"].apply(
-                                lambda x: "NEG_WORDS 추가 검토" if len(x.split()) == 1
-                                else "NEG_PATTERNS 추가 검토"
-                            )
-                            st.dataframe(pat_df, use_container_width=True, hide_index=True)
-                            st.caption("💡 등장횟수가 많을수록 규칙 추가 우선순위가 높습니다.")
-                        else:
-                            st.info("패턴 추출을 위해 더 많은 데이터가 필요합니다 (현재 건수 부족)")
-
-                    with col_list:
-                        section_title("원문 목록 (직접 검토용)", "")
-                        disp_cols = [c for c in [score_col, sent_col, voc_col, "상담사", "브랜드", "회신일"]
-                                     if c in missed_neg.columns]
-                        st.dataframe(
-                            missed_neg[disp_cols].sort_values(score_col).reset_index(drop=True),
-                            use_container_width=True, hide_index=True, height=400
-                        )
-
-                    # 점수 분포
-                    section_title("점수 분포 (놓친 부정 케이스)", "")
-                    fig_sc = go.Figure(go.Histogram(
-                        x=missed_neg[score_col],
-                        nbinsx=20,
-                        marker=dict(color="#ef4444", opacity=0.75,
-                                    line=dict(color="white", width=0.5)),
-                    ))
-                    fig_sc.update_layout(
-                        height=220, margin=dict(l=10,r=10,t=10,b=10),
-                        plot_bgcolor="white", paper_bgcolor="white",
-                        font=dict(family="Inter, Noto Sans KR", size=11),
-                        xaxis=dict(title="최종점수", showgrid=False),
-                        yaxis=dict(title="건수", showgrid=True,
-                                   gridcolor="rgba(226,232,240,0.6)"),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig_sc, use_container_width=True)
-
-            # ── SUB B: 과도한 부정 ──
-            with sub_b:
-                st.markdown("""
-                <div style="background:rgba(245,158,11,0.06);border-left:3px solid #f59e0b;
-                            border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;
-                            color:#0f172a;margin-bottom:12px;">
-                    <b>정의</b>: 최종점수 ≥ 90인데 '부정'으로 분류된 케이스<br>
-                    <b>의미</b>: 고객이 높은 점수를 줬는데 텍스트가 부정으로 오분류 →
-                    이 표현들은 <b>부정처럼 보이지만 실제론 중립/긍정</b>인 패턴입니다.
-                </div>
-                """, unsafe_allow_html=True)
-
-                if over_neg.empty:
-                    st.success("과도한 부정 없음 — 오탐이 없습니다!")
-                else:
-                    col_p2, col_l2 = st.columns([1, 1.6])
-                    with col_p2:
-                        section_title("자주 등장하는 표현 (오탐 후보)", "")
-                        patterns2 = extract_candidate_patterns(over_neg[voc_col])
-                        if patterns2:
-                            pat_df2 = pd.DataFrame(patterns2, columns=["표현", "등장횟수"])
-                            pat_df2["→ 규칙 제안"] = "NEGATION_PATTERNS 추가 검토"
-                            st.dataframe(pat_df2, use_container_width=True, hide_index=True)
-                            st.caption("💡 이 표현들은 부정어처럼 보이지만 실제 긍정인 경우입니다.")
-                        else:
-                            st.info("패턴 추출을 위해 더 많은 데이터 필요")
-                    with col_l2:
-                        section_title("원문 목록", "")
-                        disp_cols2 = [c for c in [score_col, sent_col, voc_col, "상담사", "회신일"]
-                                      if c in over_neg.columns]
-                        st.dataframe(
-                            over_neg[disp_cols2].sort_values(score_col, ascending=False).reset_index(drop=True),
-                            use_container_width=True, hide_index=True, height=400
-                        )
-
-            # ── SUB C: 미분류 부정 ──
-            with sub_c:
-                st.markdown("""
-                <div style="background:rgba(100,116,139,0.06);border-left:3px solid #64748b;
-                            border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;
-                            color:#0f172a;margin-bottom:12px;">
-                    <b>정의</b>: 최종점수 ≤ 70인데 '중립'으로 분류된 케이스<br>
-                    <b>의미</b>: 부정 표현이 있지만 현재 규칙이 인식 못하는 경우 →
-                    이 텍스트의 자주 등장 표현이 <b>완전히 새로운 부정 단어/패턴 후보</b>입니다.
-                </div>
-                """, unsafe_allow_html=True)
-
-                if missed_mid_neg.empty:
-                    st.success("미분류 부정 없음!")
-                else:
-                    col_p3, col_l3 = st.columns([1, 1.6])
-                    with col_p3:
-                        section_title("신규 패턴 발굴 후보", "")
-                        patterns3 = extract_candidate_patterns(missed_mid_neg[voc_col])
-                        if patterns3:
-                            pat_df3 = pd.DataFrame(patterns3, columns=["표현", "등장횟수"])
-                            pat_df3["→ 규칙 제안"] = pat_df3["표현"].apply(
-                                lambda x: "NEG_WORDS 신규 추가" if len(x.split()) <= 2
-                                else "NEG_PATTERNS 신규 추가"
-                            )
-                            st.dataframe(pat_df3, use_container_width=True, hide_index=True)
-                            st.caption("💡 이 표현들이 현재 규칙에 전혀 없는 새로운 부정 표현입니다.")
-                        else:
-                            st.info("패턴 추출을 위해 더 많은 데이터 필요")
-                    with col_l3:
-                        section_title("원문 목록", "")
-                        disp_cols3 = [c for c in [score_col, sent_col, voc_col, "상담사", "회신일"]
-                                      if c in missed_mid_neg.columns]
-                        st.dataframe(
-                            missed_mid_neg[disp_cols3].sort_values(score_col).reset_index(drop=True),
-                            use_container_width=True, hide_index=True, height=400
-                        )
-
-            # ── SUB D: 점수-감성 분포 ──
-            with sub_d:
-                section_title("점수 구간별 감성 분류 분포", "")
-                st.markdown("""
-                <div style="font-size:11px;color:#64748b;margin-bottom:10px;">
-                    이상적으로는 저점수 구간에 부정이 몰리고, 고점수 구간에 긍정이 몰려야 합니다.
-                    그렇지 않은 구간이 규칙 개선이 필요한 영역입니다.
-                </div>
-                """, unsafe_allow_html=True)
-
-                # 점수 구간 생성
-                bins = [0, 50, 60, 70, 80, 90, 100]
-                labels = ["~50", "51~60", "61~70", "71~80", "81~90", "91~100"]
-                src2 = src.copy()
-                src2["점수구간"] = pd.cut(src2[score_col], bins=bins, labels=labels, right=True)
-
-                dist_rows = []
-                for seg in labels:
-                    sub_seg = src2[src2["점수구간"] == seg]
-                    t = len(sub_seg)
-                    if t == 0:
-                        continue
-                    pos = len(sub_seg[sub_seg[sent_col] == "긍정"])
-                    neu = len(sub_seg[sub_seg[sent_col] == "중립"])
-                    neg = len(sub_seg[sub_seg[sent_col] == "부정"])
-                    dist_rows.append({
-                        "점수구간": seg, "전체": t,
-                        "긍정(%)": round(pos/t*100, 1),
-                        "중립(%)": round(neu/t*100, 1),
-                        "부정(%)": round(neg/t*100, 1),
-                    })
-
-                if dist_rows:
-                    dist_df = pd.DataFrame(dist_rows)
-                    col_d1, col_d2 = st.columns([1, 2])
-                    with col_d1:
-                        st.dataframe(dist_df, use_container_width=True, hide_index=True)
-                    with col_d2:
-                        fig_dist = go.Figure()
-                        for label_s, color in [("부정(%)", "#ef4444"), ("중립(%)", "#f59e0b"), ("긍정(%)", "#22c55e")]:
-                            if label_s in dist_df.columns:
-                                fig_dist.add_trace(go.Bar(
-                                    name=label_s,
-                                    x=dist_df["점수구간"],
-                                    y=dist_df[label_s],
-                                    marker=dict(color=color, opacity=0.85,
-                                                line=dict(color="white", width=0.5)),
-                                ))
-                        fig_dist.update_layout(
-                            barmode="stack",
-                            height=320, margin=dict(l=10,r=10,t=10,b=10),
-                            plot_bgcolor="white", paper_bgcolor="white",
-                            font=dict(family="Inter, Noto Sans KR", size=12),
-                            xaxis=dict(title="점수 구간", showgrid=False),
-                            yaxis=dict(title="%", showgrid=True,
-                                       gridcolor="rgba(226,232,240,0.6)"),
-                            legend=dict(orientation="h", y=-0.25, x=0.5,
-                                        xanchor="center", font=dict(size=11)),
-                        )
-                        st.plotly_chart(fig_dist, use_container_width=True)
-
-                    # 이상 구간 알림
-                    section_title("⚠️ 이상 구간 자동 감지", "")
-                    alerts = []
-                    for row in dist_rows:
-                        seg = row["점수구간"]
-                        if seg in ["~50", "51~60", "61~70"]:
-                            if row["긍정(%)"] > 20:
-                                alerts.append(f"🔴 [{seg}점] 저점수 구간인데 긍정 비율 {row['긍정(%)']}% → 부정 패턴 추가 필요")
-                            if row["중립(%)"] > 50:
-                                alerts.append(f"🟡 [{seg}점] 저점수 구간인데 중립 비율 {row['중립(%)']}% → 미분류 표현 발굴 필요")
-                        if seg in ["81~90", "91~100"]:
-                            if row["부정(%)"] > 10:
-                                alerts.append(f"🟠 [{seg}점] 고점수 구간인데 부정 비율 {row['부정(%)']}% → 오탐 패턴 점검 필요")
-                    if alerts:
-                        for a in alerts:
-                            st.warning(a)
-                    else:
-                        st.success("✅ 점수-감성 분포가 양호합니다.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -4248,10 +3968,15 @@ def page_text_intelligence(df_m, df_scored_all, target_month):
     with tab1:
         section_title("감성 분포 (이번 달)", "📊")
         if sent_col in src.columns:
+            sent_cnt = src[sent_col].value_counts().reindex(["긍정","중립","부정"], fill_value=0)
+            total_s  = sent_cnt.sum()
+            pos_cnt  = int(sent_cnt.get("긍정", 0))
+            neu_cnt  = int(sent_cnt.get("중립", 0))
+            neg_cnt_t = int(sent_cnt.get("부정", 0))
+            neg_pct  = round(neg_cnt_t / total_s * 100, 1) if total_s > 0 else 0
+
             c1, c2 = st.columns([1, 2])
             with c1:
-                sent_cnt = src[sent_col].value_counts().reindex(["긍정","중립","부정"], fill_value=0)
-                total_s  = sent_cnt.sum()
                 for lbl, cnt in sent_cnt.items():
                     pct = round(cnt / total_s * 100, 1) if total_s > 0 else 0
                     color = {"긍정": "#22c55e", "중립": "#f59e0b", "부정": "#ef4444"}.get(lbl, C_GRAY)
@@ -4267,12 +3992,10 @@ def page_text_intelligence(df_m, df_scored_all, target_month):
             with c2:
                 fig = go.Figure(go.Bar(
                     x=["긍정","중립","부정"],
-                    y=[sent_cnt.get("긍정",0), sent_cnt.get("중립",0), sent_cnt.get("부정",0)],
+                    y=[pos_cnt, neu_cnt, neg_cnt_t],
                     marker=dict(color=["#22c55e","#f59e0b","#ef4444"],
                                 line=dict(color="white", width=1)),
-                    text=[f"{v:,}건" for v in [sent_cnt.get("긍정",0),
-                                               sent_cnt.get("중립",0),
-                                               sent_cnt.get("부정",0)]],
+                    text=[f"{v:,}건" for v in [pos_cnt, neu_cnt, neg_cnt_t]],
                     textposition="outside",
                 ))
                 fig.update_layout(
@@ -4283,6 +4006,123 @@ def page_text_intelligence(df_m, df_scored_all, target_month):
                     yaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
                 )
                 st.plotly_chart(fig, use_container_width=True)
+
+            # ── 자동 인사이트 ──
+            st.markdown("<div class='spacer-sm'></div>", unsafe_allow_html=True)
+            section_title("📌 자동 인사이트", "")
+            insights = []
+
+            # 이전 월과 비교
+            if "회신월_정제" in df_scored_all.columns:
+                all_months_ti = sorted([m for m in df_scored_all["회신월_정제"].dropna().unique()
+                                        if str(m) not in {"미확인","nan",""}])
+                if target_month in all_months_ti:
+                    idx_cur = all_months_ti.index(target_month)
+                    if idx_cur > 0:
+                        prev_m_ti = all_months_ti[idx_cur - 1]
+                        prev_src  = df_scored_all[
+                            (df_scored_all["회신월_정제"].astype(str) == prev_m_ti) &
+                            (df_scored_all[sent_col].notna())
+                        ] if sent_col in df_scored_all.columns else pd.DataFrame()
+                        if not prev_src.empty:
+                            prev_total = len(prev_src)
+                            prev_neg   = len(prev_src[prev_src[sent_col] == "부정"])
+                            prev_neg_pct = round(prev_neg / prev_total * 100, 1) if prev_total > 0 else 0
+                            diff = round(neg_pct - prev_neg_pct, 1)
+                            arrow = "▲" if diff > 0 else "▼"
+                            color = "#ef4444" if diff > 0 else "#22c55e"
+                            insights.append(
+                                f'<span style="color:{color};font-weight:700;">{arrow} 부정률 {abs(diff)}%p {"증가" if diff > 0 else "감소"}</span>'
+                                f' — 지난달({prev_m_ti}) {prev_neg_pct}% → 이번달 {neg_pct}%'
+                            )
+
+            # 부정률 기준 경보
+            if neg_pct >= 30:
+                insights.append(f'🔴 <b>부정률 {neg_pct}%</b> — 30% 초과, 즉시 VOC 검토 및 상담사 코칭 필요')
+            elif neg_pct >= 15:
+                insights.append(f'🟡 <b>부정률 {neg_pct}%</b> — 15% 초과, 원인 분석 및 모니터링 강화 권고')
+            else:
+                insights.append(f'🟢 <b>부정률 {neg_pct}%</b> — 양호 수준')
+
+            # 채널별 부정률 최고 채널 감지
+            if "채널_구분" in src.columns and sent_col in src.columns:
+                ch_neg = src.groupby("채널_구분")[sent_col].apply(
+                    lambda x: round((x == "부정").sum() / len(x) * 100, 1) if len(x) > 0 else 0
+                ).sort_values(ascending=False)
+                if len(ch_neg) > 0:
+                    worst_ch = ch_neg.index[0]
+                    worst_pct = ch_neg.iloc[0]
+                    if worst_pct > neg_pct + 5:
+                        insights.append(f'📡 <b>{worst_ch} 채널</b> 부정률 {worst_pct}% — 전체 평균({neg_pct}%)보다 {round(worst_pct-neg_pct,1)}%p 높음')
+
+            # 상담사 부정 집중도 감지
+            if "상담사" in src.columns and sent_col in src.columns:
+                agt_neg = src.groupby("상담사")[sent_col].apply(
+                    lambda x: round((x == "부정").sum() / len(x) * 100, 1) if len(x) >= 3 else 0
+                ).sort_values(ascending=False)
+                high_agents = agt_neg[agt_neg > 40]
+                if len(high_agents) > 0:
+                    top3 = ", ".join(f"{a}({p}%)" for a, p in high_agents.head(3).items())
+                    insights.append(f'👤 <b>부정률 40%↑ 상담사</b>: {top3} — 개인 코칭 필요')
+
+            for ins in insights:
+                st.markdown(f"""
+                <div style="background:rgba(99,102,241,0.04);border-left:3px solid #6366f1;
+                            padding:8px 12px;border-radius:0 6px 6px 0;
+                            font-size:13px;color:#0f172a;margin-bottom:6px;">
+                    {ins}
+                </div>
+                """, unsafe_allow_html=True)
+
+        # 월별 감성 추이 (전체 기간)
+        section_title("월별 감성 추이", "📈")
+        if sent_col in df_scored_all.columns and "회신월_정제" in df_scored_all.columns:
+            months_trend = sorted([m for m in df_scored_all["회신월_정제"].dropna().unique()
+                                   if str(m) not in {"미확인","nan",""}])
+            tr_rows = []
+            for m in months_trend:
+                ms = df_scored_all[df_scored_all["회신월_정제"].astype(str) == m]
+                ms_voc = ms[ms.get(voc_col, pd.Series()).notna()] if voc_col and voc_col in ms.columns else ms
+                t = len(ms_voc) if len(ms_voc) > 0 else len(ms)
+                if t == 0: continue
+                tr_rows.append({
+                    "월": m,
+                    "긍정": len(ms[ms[sent_col] == "긍정"]),
+                    "중립": len(ms[ms[sent_col] == "중립"]),
+                    "부정": len(ms[ms[sent_col] == "부정"]),
+                    "부정률(%)": round(len(ms[ms[sent_col]=="부정"]) / t * 100, 1),
+                })
+            if tr_rows:
+                tr_df = pd.DataFrame(tr_rows)
+                fig_tr = go.Figure()
+                fig_tr.add_trace(go.Bar(x=tr_df["월"], y=tr_df["긍정"], name="긍정",
+                    marker=dict(color="#22c55e", opacity=0.85)))
+                fig_tr.add_trace(go.Bar(x=tr_df["월"], y=tr_df["중립"], name="중립",
+                    marker=dict(color="#f59e0b", opacity=0.85)))
+                fig_tr.add_trace(go.Bar(x=tr_df["월"], y=tr_df["부정"], name="부정",
+                    marker=dict(color="#ef4444", opacity=0.85)))
+                fig_tr.add_trace(go.Scatter(
+                    x=tr_df["월"], y=tr_df["부정률(%)"],
+                    mode="lines+markers+text",
+                    text=tr_df["부정률(%)"].astype(str)+"%",
+                    textposition="top center",
+                    textfont=dict(size=10, color="#dc2626"),
+                    yaxis="y2", name="부정률(%)",
+                    line=dict(color="#dc2626", width=2, dash="dot"),
+                    marker=dict(size=6, color="#dc2626"),
+                ))
+                fig_tr.update_layout(
+                    barmode="stack", height=340,
+                    margin=dict(l=10,r=60,t=20,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR", size=12),
+                    legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(title="건수", showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                    yaxis2=dict(title="부정률(%)", overlaying="y", side="right",
+                                showgrid=False, range=[0, 100]),
+                )
+                st.plotly_chart(fig_tr, use_container_width=True)
 
         # 채널 / 브랜드별 감성 분포
         section_title("채널·브랜드별 감성 분포", "📡")
@@ -4298,24 +4138,6 @@ def page_text_intelligence(df_m, df_scored_all, target_month):
             grp = grp.sort_values("부정률(%)", ascending=False)
             st.caption(f"— {gcol} 기준")
             st.dataframe(grp, use_container_width=True, hide_index=True)
-
-        # 신뢰도 분포
-        if "분류신뢰도" in src.columns and src["분류신뢰도"].notna().any():
-            section_title("분류 신뢰도 분포", "🎯")
-            fig_conf = go.Figure(go.Histogram(
-                x=src["분류신뢰도"].dropna(),
-                nbinsx=20,
-                marker=dict(color="#6366f1", opacity=0.8,
-                            line=dict(color="white", width=1)),
-            ))
-            fig_conf.update_layout(
-                height=220, margin=dict(l=10,r=10,t=10,b=10),
-                plot_bgcolor="white", paper_bgcolor="white",
-                font=dict(family="Inter, Noto Sans KR", size=12),
-                xaxis=dict(title="신뢰도", range=[0,1]),
-                yaxis=dict(title="건수"),
-            )
-            st.plotly_chart(fig_conf, use_container_width=True)
 
     # ── TAB 2: 의도 분석 ──────────────────────────────────────────
     with tab2:
@@ -4377,39 +4199,123 @@ def page_text_intelligence(df_m, df_scored_all, target_month):
                     cross = cross.sort_values("부정률(%)", ascending=False)
                     st.dataframe(cross.reset_index(), use_container_width=True, hide_index=True)
 
-    # ── TAB 3: 검토 필요 큐 ──────────────────────────────────────
+    # ── TAB 3: 검토 필요 큐 + 부정 의도 조치 가이드 ──────────────
     with tab3:
         section_title("검토 필요 항목 (모순·저신뢰도)", "🚨")
-        review_mask = (
-            (src.get("검토필요", pd.Series(False, index=src.index)) == True) |
-            (src.get("분류신뢰도", pd.Series(1.0, index=src.index)) < 0.5)
-        )
+        review_col_check = src.columns.tolist()
+        if "검토필요" in review_col_check:
+            review_mask = src["검토필요"] == True
+        elif "분류신뢰도" in review_col_check:
+            review_mask = src["분류신뢰도"] < 0.5
+        else:
+            review_mask = pd.Series(False, index=src.index)
+        if "분류신뢰도" in review_col_check:
+            review_mask = review_mask | (src["분류신뢰도"] < 0.5)
+
         review_df = src[review_mask].copy()
         if review_df.empty:
             st.success("✅ 검토 필요 항목이 없습니다.")
         else:
             st.warning(f"⚠️ {len(review_df)}건이 낮은 신뢰도 또는 점수-감성 모순으로 검토가 필요합니다.")
-            disp_cols = get_display_cols(review_df,
+            disp_cols_r = get_display_cols(review_df,
                 ["회신일","상담사","브랜드","최종점수","주관식",
                  "긍정부정","분류신뢰도","검토필요","의도분류"])
+            sort_col_r = "분류신뢰도" if "분류신뢰도" in review_df.columns else review_df.columns[0]
             st.dataframe(
-                review_df[disp_cols].sort_values("분류신뢰도").reset_index(drop=True),
+                review_df[disp_cols_r].sort_values(sort_col_r).reset_index(drop=True),
                 use_container_width=True, hide_index=True
             )
 
-        # 부정 의도 상위 항목
-        section_title("🔴 상위 부정 의도 (즉시 조치 필요)", "")
+        st.markdown("<div class='spacer-md'></div>", unsafe_allow_html=True)
+
+        # ── 부정 의도 조치 가이드 ──
+        section_title("🔴 부정 의도별 조치 가이드", "")
+
+        # 의도별 권장 조치 매핑
+        _ACTION_GUIDE = {
+            "상담사평가":   ("🧑‍🏫 상담사 코칭",    "해당 상담사 VOC 원문 공유 → 1:1 코칭 면담 → 스크립트 개선"),
+            "프로세스개선": ("⚙️ 프로세스 TF",    "개선요청 내용 취합 → 운영팀 공유 → 우선순위 설정 → 개선일정 수립"),
+            "정책분쟁":     ("📋 정책 검토",       "분쟁 유형 분류 → 법무·운영팀 협의 → 안내 스크립트 통일"),
+            "지연대기":     ("⏱️ SLA 점검",        "지연 구간 특정 → 배분 기준 재설정 → 콜백 프로세스 강화"),
+            "상품배송주문": ("📦 CS 에스컬레이션", "물류팀 긴급 공유 → 고객 선제 연락 → 보상 기준 적용"),
+            "시스템오류":   ("🛠️ 개발팀 연동",     "오류 유형 수집 → 개발팀 티켓 발행 → 임시 대응 안내 배포"),
+            "기타":         ("📌 주기적 검토",      "매주 VOC 검토 → 패턴 발견 시 별도 의도로 분류"),
+        }
+
         if sent_col in src.columns and intent_col in src.columns:
             neg_src = src[src[sent_col] == "부정"].copy()
-            if not neg_src.empty:
-                neg_intents = []
+            if neg_src.empty:
+                st.success("✅ 이번 달 부정 응답이 없습니다.")
+            else:
+                # 의도별 부정 건수 집계
+                neg_intent_counter = Counter()
+                neg_intent_voc = {}  # 의도별 VOC 샘플 저장
                 for _, row in neg_src.iterrows():
-                    for intent in [i.strip() for i in str(row.get(intent_col,"")).split(",") if i.strip()]:
-                        neg_intents.append(intent)
-                ni_cnt = Counter(neg_intents).most_common(10)
-                if ni_cnt:
-                    ni_df = pd.DataFrame(ni_cnt, columns=["의도","부정건수"])
-                    st.dataframe(ni_df, use_container_width=True, hide_index=True)
+                    row_intents = [i.strip() for i in str(row.get(intent_col,"")).split(",") if i.strip()]
+                    for intent in row_intents:
+                        neg_intent_counter[intent] += 1
+                        if intent not in neg_intent_voc:
+                            neg_intent_voc[intent] = []
+                        if len(neg_intent_voc[intent]) < 3 and voc_col and pd.notna(row.get(voc_col)):
+                            neg_intent_voc[intent].append(str(row.get(voc_col,""))[:80])
+
+                st.markdown(f"""
+                <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);
+                            border-radius:8px;padding:10px 14px;font-size:12px;
+                            color:#0f172a;margin-bottom:12px;">
+                    총 <b>{len(neg_src):,}건</b>의 부정 응답에서 아래 의도가 감지되었습니다.
+                    의도별 권장 조치를 확인하고 팀별로 할당하세요.
+                </div>
+                """, unsafe_allow_html=True)
+
+                for intent, cnt in neg_intent_counter.most_common():
+                    action_label, action_desc = _ACTION_GUIDE.get(
+                        intent, ("📌 검토 필요", "담당팀과 협의 후 처리"))
+                    pct_of_neg = round(cnt / len(neg_src) * 100, 1) if len(neg_src) > 0 else 0
+                    samples = neg_intent_voc.get(intent, [])
+                    urgency_color = "#ef4444" if cnt >= 5 else "#f59e0b" if cnt >= 2 else "#6b7280"
+
+                    with st.expander(
+                        f"{action_label} — **{intent}** ({cnt}건, 부정의 {pct_of_neg}%)", expanded=(cnt >= 5)
+                    ):
+                        st.markdown(f"""
+                        <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:8px;">
+                            <div style="background:rgba(239,68,68,0.06);border-radius:8px;padding:10px;">
+                                <div style="font-size:11px;color:#64748b;margin-bottom:4px;">부정 건수</div>
+                                <div style="font-size:22px;font-weight:800;color:{urgency_color};">{cnt}건</div>
+                                <div style="font-size:11px;color:#64748b;">부정 중 {pct_of_neg}%</div>
+                            </div>
+                            <div style="background:rgba(99,102,241,0.04);border-radius:8px;padding:10px;">
+                                <div style="font-size:11px;color:#64748b;margin-bottom:4px;">📋 권장 조치</div>
+                                <div style="font-size:13px;font-weight:600;color:#0f172a;">{action_desc}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        if samples:
+                            st.markdown("**💬 VOC 샘플 (최대 3건)**")
+                            for i, s in enumerate(samples, 1):
+                                st.markdown(f"""
+                                <div style="background:#f8fafc;border-left:3px solid {urgency_color};
+                                            padding:6px 10px;border-radius:0 4px 4px 0;
+                                            font-size:12px;color:#374151;margin-bottom:4px;">
+                                    {i}. {s}{"..." if len(s)==80 else ""}
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                        # 해당 의도 전체 목록 보기
+                        intent_neg_rows = neg_src[
+                            neg_src[intent_col].str.contains(intent, na=False)
+                        ].copy()
+                        if not intent_neg_rows.empty:
+                            dcols = get_display_cols(intent_neg_rows,
+                                ["회신일","상담사","브랜드","최종점수","주관식","의도분류"])
+                            st.dataframe(
+                                intent_neg_rows[dcols].reset_index(drop=True),
+                                use_container_width=True, hide_index=True, height=200
+                            )
+        else:
+            st.info("감성/의도 분류 데이터가 없습니다.")
 
     # ── TAB 4: 개선 요청 트래커 ──────────────────────────────────
     with tab4:
@@ -4495,27 +4401,33 @@ def page_model_monitor(df_scored_all, target_month):
     page_header("🔬 모델 모니터",
                 "분류 신뢰도·드리프트·약지도 평가  |  ML 분류기 성능 모니터링")
 
-    st.markdown(f"""
-    <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
-                border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:16px;">
-        <b>현재 엔진:</b> {"🟢 TF-IDF + LogReg ML 모델" if _MODEL_TRAINED else "🟡 규칙 기반 폴백"}
-        &nbsp;|&nbsp; <b>의도 레이블:</b> {", ".join(INTENT_LABELS)}
-    </div>
-    """, unsafe_allow_html=True)
-
     sent_col = "긍정부정"
     src = df_scored_all.copy()
 
+    # 모델 상태 배지 — 실패해도 페이지 막지 않음
+    engine_label = "🟢 TF-IDF + LogReg ML 모델" if _MODEL_TRAINED else "🟡 고정밀 규칙 기반 (Rule Engine)"
+    st.markdown(f"""
+    <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
+                border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:16px;
+                display:flex;align-items:center;gap:12px;">
+        <span><b>현재 엔진:</b> {engine_label}</span>
+        <span style="color:#94a3b8;">|</span>
+        <span><b>의도 레이블:</b> {", ".join(INTENT_LABELS)}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # sklearn 미설치 상태면 재학습 버튼만 노출 (페이지 전체는 계속 표시)
     if not _MODEL_TRAINED:
-        st.warning("ML 모델이 학습되지 않았습니다. 데이터가 충분하면 자동 학습됩니다.")
-        if st.button("🔄 모델 재학습 시도"):
-            with st.spinner("학습 중..."):
-                success = train_classifiers_from_df(src)
-            if success:
-                st.success("✅ 모델 학습 완료! 페이지를 새로고침하세요.")
-            else:
-                st.error("학습 실패 (데이터 부족 또는 sklearn 없음)")
-        return
+        col_btn, col_txt = st.columns([1, 4])
+        with col_btn:
+            if st.button("🔄 ML 모델 학습", help="sklearn이 설치된 환경에서 클릭하면 ML 모델을 즉시 학습합니다"):
+                with st.spinner("학습 중..."):
+                    success = train_classifiers_from_df(src)
+                if success:
+                    st.success("✅ 모델 학습 완료!")
+                    st.rerun()
+        with col_txt:
+            st.caption("💡 현재 규칙 기반 엔진으로 동작 중입니다. sklearn 설치 후 학습하면 ML 모델로 전환됩니다.")
 
     tab_a, tab_b, tab_c = st.tabs(["신뢰도 분포", "월별 드리프트", "약지도 평가"])
 
