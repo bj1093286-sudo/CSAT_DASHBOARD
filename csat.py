@@ -2042,11 +2042,17 @@ def page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week
                     section_title("채널별 응답률 및 점수", "📡")
                     ch_rate_d  = calc_response_rate(df_day_all, df_day_kpi, "채널_구분")
                     ch_score_d = pivot_avg(df_day_kpi, "채널_구분")
-                    if not ch_score_d.empty and "채널_구분" in ch_score_d.columns:
-                        ch_d = ch_rate_d.merge(ch_score_d.rename(columns={"채널_구분":"구분"}),
-                                               on="구분", how="left")
-                        ch_d = ch_d.loc[:, ~ch_d.columns.duplicated()]
-                    else:
+                    try:
+                        if not ch_score_d.empty and "채널_구분" in ch_score_d.columns:
+                            _cs = ch_score_d.rename(columns={"채널_구분": "구분"})
+                            if "구분" in ch_rate_d.columns and "구분" in _cs.columns:
+                                ch_d = ch_rate_d.merge(_cs, on="구분", how="left")
+                                ch_d = ch_d.loc[:, ~ch_d.columns.duplicated()]
+                            else:
+                                ch_d = ch_rate_d
+                        else:
+                            ch_d = ch_rate_d
+                    except Exception:
                         ch_d = ch_rate_d
                     st.dataframe(ch_d, use_container_width=True, hide_index=True)
 
@@ -2226,11 +2232,17 @@ def page_day_week(df_all, df_scored, df_scored_all, selected_date, selected_week
                     section_title("채널별 응답률 및 점수", "📡")
                     ch_rate_w  = calc_response_rate(df_week_all, df_week_kpi, "채널_구분")
                     ch_score_w = pivot_avg(df_week_kpi, "채널_구분")
-                    if not ch_score_w.empty and "채널_구분" in ch_score_w.columns:
-                        ch_w = ch_rate_w.merge(ch_score_w.rename(columns={"채널_구분":"구분"}),
-                                               on="구분", how="left")
-                        ch_w = ch_w.loc[:, ~ch_w.columns.duplicated()]
-                    else:
+                    try:
+                        if not ch_score_w.empty and "채널_구분" in ch_score_w.columns:
+                            _csw = ch_score_w.rename(columns={"채널_구분": "구분"})
+                            if "구분" in ch_rate_w.columns and "구분" in _csw.columns:
+                                ch_w = ch_rate_w.merge(_csw, on="구분", how="left")
+                                ch_w = ch_w.loc[:, ~ch_w.columns.duplicated()]
+                            else:
+                                ch_w = ch_rate_w
+                        else:
+                            ch_w = ch_rate_w
+                    except Exception:
                         ch_w = ch_rate_w
                     st.dataframe(ch_w, use_container_width=True, hide_index=True)
 
@@ -3885,7 +3897,7 @@ def page_education(df_m, df_scored_all, target_month):
                     try:
                         import io
                         _buf = io.BytesIO()
-                        with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
+                        with pd.ExcelWriter(_buf, engine="xlsxwriter") as _writer:
                             export_df.to_excel(_writer, index=False, sheet_name="우수VOC")
                         st.download_button(
                             label="⬇️ 엑셀 다운로드 (.xlsx)",
