@@ -97,9 +97,33 @@ def extract_ym(series: pd.Series) -> pd.Series:
 
 
 # ══════════════════════════════════════════════════════════════════
-# 2. 감성 분류 (변경 없음)
+# 2. 감성·의도 분류 (Hybrid ML + Rule 기반 업그레이드)
 # ══════════════════════════════════════════════════════════════════
-POS_WORDS = [
+
+# ── 2-A. 규칙 기반 폴백 (고정밀 트리거) ──────────────────────────
+_HIGH_PREC_NEG_PATTERNS = [
+    r"(?:잠깐만|잠시만|조금만).{0,10}(?:요|요\.)",
+    r"(?:또|다시|계속|반복).{0,10}(?:기다려|대기)",
+    r"(?:처음|아까|어제|전날|이전|저번).{0,15}(?:다르|달라|바꿔|변경)",
+    r"(?:말|설명|안내).{0,10}(?:달라|다르|바뀌|바꿔|모순|틀려)",
+    r"(?:어제|전날|이미|아까).{0,10}(?:합의|협의|약속|확인).{0,15}(?:또|다시|추가)",
+    r"(?:이미|전에).{0,10}(?:보냈|제출|드렸).{0,15}(?:또|다시|재|추가)",
+    r"\d+\s*번.{0,10}(?:전화|문의|연락|상담)",
+    r"(?:\d+|한|두|세|이|삼|사|오).{0,3}(?:주|달|개월).{0,5}(?:넘|지나|됐)",
+    r"(?:같은|똑같은|동일한).{0,10}말만",
+    r"(?:대응|처리|연락|답변|해결|교환|환불|배송|발송).{0,8}(?:안돼|안되|못해|안됩|불가|지연)",
+    r"(?:너무|정말|진짜).{0,5}(?:늦어|느려|오래|답답|아쉽|실망|속상|허탈)",
+    r"환불\s*(?:거부|안|못|지연)", r"취소\s*(?:거부|안|못)",
+]
+_NEGATION_PATTERNS = [
+    r"불편함?\s*없", r"불만\s*없", r"문제\s*없", r"걱정\s*없",
+    r"어렵지\s*않", r"나쁘지\s*않", r"부족하지\s*않",
+    r"아쉽지\s*않", r"실망하지\s*않", r"불편하지\s*않",
+    r"늦지\s*않", r"느리지\s*않",
+    r"(?:전혀|하나도)\s*(?:불편|불만|문제)",
+    r"전혀\s*없", r"하나도\s*없",
+]
+_RULE_POS_WORDS = [
     "감사합니다","고맙습니다","감사드립니다","정말감사","너무감사","진심감사",
     "친절하게","친절히","친절했","친절합니다","너무친절","정말친절","매우친절",
     "만족스럽","만족했","만족합니다","만족해요","대만족","완전만족","매우만족",
@@ -121,7 +145,7 @@ POS_WORDS = [
     "잘처리됐","잘처리되었","정상처리","이해하기쉽게","알기쉽게",
     "좋았습니다","잘됐습니다","감사했습니다","편했습니다",
 ]
-NEG_WORDS = [
+_RULE_NEG_WORDS = [
     "불만","불쾌","불친절","불성실","불신",
     "화나","화났","짜증","짜증나","짜증났","짜증스럽","열받았","어이없","황당","기가막혀",
     "최악","형편없","엉망","엉터리","별로였","나빴","실망했","실망스럽","기대이하",
@@ -134,12 +158,10 @@ NEG_WORDS = [
     "허술한","믿을수없어","의심스럽","사기같아","거짓말","허위안내","책임안져",
     "나몰라식","떠넘겼","전가했","연결안돼","설명이부족","답변부실","엉뚱한답변",
     "환불거부","환불안해","취소거부","환불지연","환불못받아","다시는이용안해",
-    "절대추천안해","비추천","잠깐만요","잠깐만기다려","잠시만요","잠시만기다려",
-    "조금만기다려","말이달라","말을바꿔","앞에서는","전에는된다고","다르게말했",
-    "모순됐","일관성없","혼란스럽","헷갈려","혼동됐","설명이다달라","매번달라",
-    "어제협의했는데","이미교환하기로","이미환불하기로","다시증빙","또증빙","재제출",
-    "전체반품","전부보내","불필요하게","과도한요구",
-    # ── 추가: 구어체 부정/지연/반복 표현 ──
+    "절대추천안해","비추천","조금만기다려","말이달라","말을바꿔","앞에서는",
+    "전에는된다고","다르게말했","모순됐","일관성없","혼란스럽","헷갈려","혼동됐",
+    "설명이다달라","매번달라","어제협의했는데","이미교환하기로","이미환불하기로",
+    "다시증빙","또증빙","재제출","전체반품","전부보내","불필요하게","과도한요구",
     "똑같은말","같은말만","동일한답변","똑같은답변","매번같은",
     "안돼요","안되요","안됩니다","불가하다","불가능하다","안된다고",
     "대응이안","처리가안","해결이안","연결이안",
@@ -151,107 +173,393 @@ NEG_WORDS = [
     "답답해요","답답합니다","황당해요","어이없어요",
     "택배가안","배송이안","아직도안","언제오는","안오네요",
 ]
-NEGATION_PATTERNS = [
-    r"불편함?\s*없", r"불만\s*없", r"문제\s*없", r"걱정\s*없",
-    r"어렵지\s*않", r"나쁘지\s*않", r"부족하지\s*않",
-    r"아쉽지\s*않", r"실망하지\s*않", r"불편하지\s*않",
-    r"늦지\s*않", r"느리지\s*않",
-    r"(?:전혀|하나도)\s*(?:불편|불만|문제)",
-    r"전혀\s*없", r"하나도\s*없",
-]
-NEG_PATTERNS = [
-    r"(?:잠깐만|잠시만|조금만).{0,10}(?:요|요\.)",
-    r"(?:기다려|대기).{0,5}(?:달라|주세요|요).{0,20}(?:또|다시|반복|몇\s*번)",
-    r"(?:또|다시|계속|반복).{0,10}(?:기다려|대기)",
-    r"(?:처음|아까|어제|전날|이전|저번).{0,15}(?:다르|달라|바꿔|변경)",
-    r"(?:말|설명|안내).{0,10}(?:달라|다르|바뀌|바꿔|모순|틀려)",
-    r"(?:상담사|직원).{0,10}(?:마다|마다.{0,5})(?:달라|다르|다른)",
-    r"(?:어제|전날|이미|아까).{0,10}(?:합의|협의|약속|확인).{0,15}(?:또|다시|추가)",
-    r"(?:이미|전에).{0,10}(?:보냈|제출|드렸).{0,15}(?:또|다시|재|추가)",
-    r"(?:드로퍼|일부|부분).{0,10}(?:인데|인데도).{0,15}(?:전체|전부|본체|다)",
-    r"(?:전체|전부|본체).{0,10}(?:보내|반품|가져).{0,10}(?:달라|요|하라)",
-    # ── 추가: 구어체 반복·지연·불가 패턴 ──
-    r"\d+\s*번.{0,10}(?:전화|문의|연락|상담)",          # 3번이나 전화했는데
-    r"(?:\d+|한|두|세|이|삼|사|오).{0,3}(?:주|달|개월).{0,5}(?:넘|지나|됐|됩니다|됩니까|됩니까)",  # 2주가 넘었어요
-    r"(?:같은|똑같은|동일한).{0,10}말만",               # 같은 말만 하시구
-    r"(?:대응|처리|연락|답변|해결|교환|환불|배송|발송).{0,8}(?:안돼|안되|못해|안됩|불가|지연)",  # 대응이 안되요
-    r"빠른.{0,10}(?:안되|안됩|불가|못|없어)",           # 빠른 대응이 안되요
-    r"(?:너무|정말|진짜).{0,5}(?:늦어|느려|오래|답답|아쉽|실망|속상|허탈)",  # 너무 늦어요
-]
 
 
-def classify_sentiment(text: str) -> str:
+def _rule_classify(text: str) -> str:
+    """기존 규칙 기반 분류 (폴백/고정밀 트리거 용)"""
     if not isinstance(text, str) or text.strip() == "":
         return None
     t = re.sub(r"\s+", "", text.strip())
-
-    # ── 1순위: 명확한 패턴 기반 부정 ──
-    for pat in NEG_PATTERNS:
+    for pat in _HIGH_PREC_NEG_PATTERNS:
         if re.search(pat, text.strip()):
             return "부정"
-
-    negated   = any(re.search(p, t) for p in NEGATION_PATTERNS)
-    pos_count = sum(1 for w in POS_WORDS if w in t)
-    neg_count = 0 if negated else sum(1 for w in NEG_WORDS if w in t)
-
-    # ── 2순위: 부정 단어가 1개라도 있으면 → 부정 가중치 적용 ──
-    # 기존: neg > pos 일 때만 부정 → 문제: 긍정 단어 많으면 묻혀버림
-    # 개선: 부정 단어가 있으면 pos의 1.5배 이상일 때만 긍정, 아니면 부정
+    negated   = any(re.search(p, t) for p in _NEGATION_PATTERNS)
+    pos_count = sum(1 for w in _RULE_POS_WORDS if w in t)
+    neg_count = 0 if negated else sum(1 for w in _RULE_NEG_WORDS if w in t)
     if neg_count > 0 and not negated:
         return "부정" if neg_count * 1 >= pos_count * 0.6 else "긍정"
-
     if neg_count == 0 and pos_count == 0:
         short_pos = ["감사합니다","고맙습니다","잘됐어요","잘됐습니다","해결됐어요",
                      "완료됐습니다","수고하셨습니다","잘부탁드립니다"]
         return "긍정" if any(w in t for w in short_pos) else "중립"
-
     return "부정" if neg_count > pos_count else "긍정"
 
 
-def classify_with_score(text: str, score) -> str:
-    """
-    텍스트 기반 감성 + 점수를 함께 고려한 최종 분류.
+# ── 2-B. ML 모델 (TF-IDF + LogReg, 약지도 학습) ──────────────────
+# 의도 분류 레이블
+INTENT_LABELS = [
+    "상담사평가",      # agent evaluation (praise/complaint)
+    "프로세스개선",    # process/UX improvement request
+    "정책분쟁",        # policy/resolution dispute
+    "지연대기",        # delay/waiting/responsiveness
+    "상품배송주문",    # product/delivery/order issue
+    "시스템오류",      # system/technical issue
+    "기타",            # other / not relevant
+]
 
-    ✅ 수정 핵심:
-      - 기존: 점수 ≤ 90이면 긍정→중립 → 부정이어야 할 것까지 중립으로 왜곡
-      - 개선:
-        * 점수 < 70 + 텍스트 중립/긍정 → 부정 (점수가 명백히 불만)
-        * 점수 70~90 + 텍스트 긍정 → 중립 (애매 구간)
-        * 점수 > 90 → 텍스트 분류 그대로 신뢰
-        * 텍스트가 이미 부정이면 점수와 무관하게 부정 유지
+# 의도별 키워드 시드 (약지도 학습용)
+_INTENT_SEEDS = {
+    "상담사평가": [
+        "친절","불친절","상담사","직원","응대","태도","말투","무례","전문성",
+        "공감","설명","안내","퉁명","냉정","친근","따뜻","칭찬","고압적",
+    ],
+    "프로세스개선": [
+        "개선","자동화","절차","프로세스","시스템","불편","간편","쉽게","복잡",
+        "콜백","자동","UI","앱","화면","메뉴","기능","개편","바꿔",
+    ],
+    "정책분쟁": [
+        "환불","취소","반품","정책","규정","불공평","거부","납득","이해안",
+        "말이달라","약속","합의","협의","보상","처리기준",
+    ],
+    "지연대기": [
+        "지연","늦","오래","기다","대기","언제","몇번","또전화","반복","재문의",
+        "계속","응답없","연락없","처리안","미해결",
+    ],
+    "상품배송주문": [
+        "배송","택배","주문","상품","오배송","누락","누빠","파손","불량","결제",
+        "결제오류","주문취소","교환","반품","미입고","미배달",
+    ],
+    "시스템오류": [
+        "오류","에러","앱","앱오류","사이트","접속","로그인","결제오류","화면",
+        "버그","먹통","안됩니다","시스템","장애",
+    ],
+    "기타": [
+        "기타","상관없","해당없","모르겠","잘모르","없음",
+    ],
+}
+
+# 전역 모델 캐시
+_SENTIMENT_MODEL = None
+_INTENT_MODEL    = None
+_SENTIMENT_VEC   = None
+_INTENT_VEC      = None
+_MODEL_TRAINED   = False
+
+
+def _tokenize_korean(text: str) -> str:
+    """간단한 한국어 토크나이저: 2글자+ 한글 어절 추출 + 공백 정규화"""
+    t = re.sub(r"[^\uAC00-\uD7A3\s]", " ", str(text))
+    tokens = [w for w in re.findall(r"[\uAC00-\uD7A3]{2,}", t)]
+    return " ".join(tokens)
+
+
+def _make_weak_labels(texts, scores):
+    """약지도 방식으로 감성 레이블 생성 (규칙 + 점수 휴리스틱)"""
+    labels = []
+    for text, score in zip(texts, scores):
+        rule = _rule_classify(text)
+        try:
+            s = float(score)
+        except (TypeError, ValueError):
+            s = None
+
+        if rule == "부정":
+            labels.append("부정")
+        elif s is not None and s < 70:
+            labels.append("부정")
+        elif s is not None and s >= 90 and rule == "긍정":
+            labels.append("긍정")
+        elif rule == "긍정" and s is not None and s >= 70:
+            labels.append("긍정")
+        elif rule == "중립" or rule is None:
+            if s is not None and s >= 90:
+                labels.append("긍정")
+            elif s is not None and s < 70:
+                labels.append("부정")
+            else:
+                labels.append("중립")
+        else:
+            labels.append(rule)
+    return labels
+
+
+def _make_intent_weak_labels(texts):
+    """의도 약지도 레이블: 텍스트당 매칭되는 의도 리스트 반환"""
+    labels = []
+    for text in texts:
+        t = re.sub(r"\s+", "", str(text))
+        matched = []
+        for intent, kws in _INTENT_SEEDS.items():
+            if any(kw in t for kw in kws):
+                matched.append(intent)
+        if not matched:
+            matched = ["기타"]
+        labels.append(matched)
+    return labels
+
+
+def _train_models(df: pd.DataFrame):
+    """데이터프레임으로 감성 + 의도 분류 모델 학습"""
+    global _SENTIMENT_MODEL, _INTENT_MODEL, _SENTIMENT_VEC, _INTENT_VEC, _MODEL_TRAINED
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.multiclass import OneVsRestClassifier
+        from sklearn.preprocessing import MultiLabelBinarizer
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.calibration import CalibratedClassifierCV
+    except ImportError:
+        return False
+
+    voc_col   = next((c for c in ["주관식","verbatim","Q3","의견"] if c in df.columns), None)
+    score_col = "최종점수" if "최종점수" in df.columns else None
+    if not voc_col:
+        return False
+
+    sub = df[df[voc_col].notna()].copy()
+    sub = sub[sub[voc_col].astype(str).str.strip() != ""].copy()
+    if len(sub) < 20:
+        return False
+
+    texts  = sub[voc_col].astype(str).tolist()
+    scores = sub[score_col].tolist() if score_col else [None] * len(texts)
+    tokens = [_tokenize_korean(t) for t in texts]
+
+    # 감성 모델
+    sent_labels = _make_weak_labels(texts, scores)
+    _SENTIMENT_VEC = TfidfVectorizer(
+        analyzer="char_wb", ngram_range=(2, 4),
+        max_features=8000, sublinear_tf=True,
+    )
+    X_sent = _SENTIMENT_VEC.fit_transform(tokens)
+    base_clf = LogisticRegression(max_iter=500, C=1.0, class_weight="balanced")
+    _SENTIMENT_MODEL = CalibratedClassifierCV(base_clf, cv=min(3, len(set(sent_labels))))
+    _SENTIMENT_MODEL.fit(X_sent, sent_labels)
+
+    # 의도 모델
+    intent_labels = _make_intent_weak_labels(texts)
+    from sklearn.preprocessing import MultiLabelBinarizer
+    mlb = MultiLabelBinarizer(classes=INTENT_LABELS)
+    Y_intent = mlb.fit_transform(intent_labels)
+    _INTENT_VEC = TfidfVectorizer(
+        analyzer="char_wb", ngram_range=(2, 4),
+        max_features=8000, sublinear_tf=True,
+    )
+    X_intent = _INTENT_VEC.fit_transform(tokens)
+    _INTENT_MODEL = OneVsRestClassifier(
+        LogisticRegression(max_iter=300, C=0.8, class_weight="balanced")
+    )
+    _INTENT_MODEL.fit(X_intent, Y_intent)
+    # mlb를 모델에 함께 저장
+    _INTENT_MODEL._mlb = mlb
+    _MODEL_TRAINED = True
+    return True
+
+
+def _ml_classify_batch(texts: list, scores: list = None) -> list:
     """
-    base = classify_sentiment(text)
+    배치 감성 분류.
+    반환: list of {"감성": str, "신뢰도": float, "needs_review": bool}
+    """
+    if not _MODEL_TRAINED or _SENTIMENT_MODEL is None:
+        # 폴백: 규칙 기반
+        results = []
+        for i, t in enumerate(texts):
+            s = scores[i] if scores else None
+            rule = _rule_classify(t)
+            if rule is None:
+                results.append({"감성": None, "신뢰도": None, "needs_review": False})
+                continue
+            # 점수 보정
+            try:
+                sv = float(s) if s is not None else None
+            except (TypeError, ValueError):
+                sv = None
+            if sv is not None and sv < 70 and rule != "부정":
+                rule = "부정"
+            elif sv is not None and 70 <= sv < 90 and rule == "긍정":
+                rule = "중립"
+            results.append({"감성": rule, "신뢰도": 0.6, "needs_review": False})
+        return results
+
+    tokens = [_tokenize_korean(t) for t in texts]
+    X = _SENTIMENT_VEC.transform(tokens)
+    proba = _SENTIMENT_MODEL.predict_proba(X)
+    classes = _SENTIMENT_MODEL.classes_
+
+    results = []
+    for i, (t, prob_row) in enumerate(zip(texts, proba)):
+        best_idx = int(np.argmax(prob_row))
+        pred     = classes[best_idx]
+        conf     = float(prob_row[best_idx])
+
+        # 고정밀 규칙 오버라이드: 명확한 부정 패턴은 무조건 부정
+        for pat in _HIGH_PREC_NEG_PATTERNS:
+            if re.search(pat, str(t)):
+                pred = "부정"
+                conf = max(conf, 0.85)
+                break
+
+        # 점수 보정
+        sv = None
+        if scores:
+            try:
+                sv = float(scores[i])
+            except (TypeError, ValueError):
+                sv = None
+        if sv is not None and sv < 70 and pred != "부정":
+            pred = "부정"
+            conf = max(conf, 0.75)
+        elif sv is not None and 70 <= sv < 90 and pred == "긍정":
+            pred = "중립"
+            conf = max(conf, 0.65)
+
+        # needs_review: 낮은 신뢰도 or 긍정+저점수 모순
+        needs_review = (conf < 0.55) or (pred == "긍정" and sv is not None and sv < 70)
+
+        results.append({"감성": pred, "신뢰도": round(conf, 3), "needs_review": needs_review})
+    return results
+
+
+def _ml_intent_batch(texts: list) -> list:
+    """
+    배치 의도 분류.
+    반환: list of {"의도": [str,...], "의도_신뢰도": {label: float}}
+    """
+    if not _MODEL_TRAINED or _INTENT_MODEL is None:
+        # 폴백: 키워드 기반
+        results = []
+        for text in texts:
+            weak = _make_intent_weak_labels([text])[0]
+            results.append({"의도": weak, "의도_신뢰도": {k: 0.5 for k in weak}})
+        return results
+
+    tokens = [_tokenize_korean(t) for t in texts]
+    X      = _INTENT_VEC.transform(tokens)
+    proba  = _INTENT_MODEL.predict_proba(X)  # shape: (n, n_labels)
+    mlb    = _INTENT_MODEL._mlb
+
+    results = []
+    for i, prob_row in enumerate(proba):
+        intent_conf = {
+            label: round(float(p), 3)
+            for label, p in zip(mlb.classes_, prob_row)
+        }
+        # 임계값 0.35 이상인 의도만 선택
+        matched = [lbl for lbl, p in intent_conf.items() if p >= 0.35]
+        if not matched:
+            # 가장 높은 1개 선택
+            matched = [max(intent_conf, key=intent_conf.get)]
+        results.append({"의도": matched, "의도_신뢰도": intent_conf})
+    return results
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _cached_classify(texts_tuple, scores_tuple):
+    """캐시된 배치 감성+의도 분류"""
+    texts  = list(texts_tuple)
+    scores = list(scores_tuple) if scores_tuple else [None] * len(texts)
+    sent   = _ml_classify_batch(texts, scores)
+    intent = _ml_intent_batch(texts)
+    return sent, intent
+
+
+# ── 2-C. 호환 래퍼 (기존 함수명 유지) ──────────────────────────────
+def classify_sentiment(text: str) -> str:
+    """단건 감성 분류 (폴백 규칙 기반, 하위호환)"""
+    return _rule_classify(text)
+
+
+def classify_with_score(text: str, score) -> str:
+    """단건 감성+점수 분류 (하위호환)"""
+    base = _rule_classify(text)
     if base is None:
         return None
     try:
         s = float(score)
     except (TypeError, ValueError):
         return base
-
-    # 텍스트가 부정 → 점수와 무관하게 부정 유지
     if base == "부정":
         return "부정"
-    # 점수가 70 미만인데 텍스트가 중립/긍정 → 부정으로 보정
     if s < 70:
         return "부정"
-    # 점수가 70~90 구간이고 텍스트가 긍정 → 중립으로 보정 (확실한 만족이 아님)
     if s < 90 and base == "긍정":
         return "중립"
-    # 90점 이상 → 텍스트 분류 그대로
     return base
 
 
 def add_sentiment_column(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    감성 분류 + 의도 분류 컬럼 추가.
+    - 기존 "긍정부정" 컬럼 유지 (하위호환)
+    - 신규: "감성(모델)", "분류신뢰도", "검토필요", "의도분류", "의도_원본"
+    """
     col       = next((c for c in ["주관식","verbatim","Q3","의견"] if c in df.columns), None)
     score_col = "최종점수" if "최종점수" in df.columns else None
-    if col:
-        if score_col:
-            df["긍정부정"] = df.apply(lambda r: classify_with_score(r[col], r[score_col]), axis=1)
-        else:
-            df["긍정부정"] = df[col].apply(classify_sentiment)
-    else:
+
+    if not col:
         df["긍정부정"] = None
+        return df
+
+    # 비어있지 않은 텍스트만 분류
+    mask       = df[col].notna() & (df[col].astype(str).str.strip() != "")
+    texts_all  = df[col].astype(str).tolist()
+    scores_all = df[score_col].tolist() if score_col else [None] * len(df)
+
+    texts_valid  = [texts_all[i]  for i in range(len(df)) if mask.iloc[i]]
+    scores_valid = [scores_all[i] for i in range(len(df)) if mask.iloc[i]]
+
+    # 배치 분류 (캐시됨)
+    if texts_valid:
+        try:
+            sent_res, intent_res = _cached_classify(
+                tuple(texts_valid), tuple(str(s) for s in scores_valid)
+            )
+        except Exception:
+            sent_res   = [{"감성": _rule_classify(t), "신뢰도": 0.6, "needs_review": False}
+                          for t in texts_valid]
+            intent_res = _make_intent_weak_labels(texts_valid)
+            intent_res = [{"의도": r, "의도_신뢰도": {k: 0.5 for k in r}} for r in intent_res]
+    else:
+        sent_res   = []
+        intent_res = []
+
+    # 결과를 원본 인덱스에 매핑
+    sent_map   = {}
+    intent_map = {}
+    valid_idx  = [i for i in range(len(df)) if mask.iloc[i]]
+    for j, orig_i in enumerate(valid_idx):
+        sent_map[orig_i]   = sent_res[j]
+        intent_map[orig_i] = intent_res[j]
+
+    def get_sent(i):
+        r = sent_map.get(i, {})
+        return r.get("감성", None)
+
+    def get_conf(i):
+        r = sent_map.get(i, {})
+        return r.get("신뢰도", None)
+
+    def get_review(i):
+        r = sent_map.get(i, {})
+        return r.get("needs_review", False)
+
+    def get_intent_str(i):
+        r = intent_map.get(i, {})
+        return ", ".join(r.get("의도", []))
+
+    df = df.copy()
+    df["긍정부정"]    = [get_sent(i) for i in range(len(df))]
+    df["감성(모델)"]  = df["긍정부정"]
+    df["분류신뢰도"]  = [get_conf(i)   for i in range(len(df))]
+    df["검토필요"]    = [get_review(i) for i in range(len(df))]
+    df["의도분류"]    = [get_intent_str(i) for i in range(len(df))]
+
     return df
+
+
+def train_classifiers_from_df(df: pd.DataFrame) -> bool:
+    """외부에서 호출 가능한 모델 학습 트리거"""
+    return _train_models(df)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -795,7 +1103,15 @@ def prepare_data(df_raw_hash):
 def prepare_data_from_df(df_raw: pd.DataFrame):
     df = normalize_columns(df_raw)
     df = build_time_columns(df)
-    return split_active_and_scored(df)
+    result = split_active_and_scored(df)
+    # 모델이 아직 학습되지 않았으면 학습 시도
+    global _MODEL_TRAINED
+    if not _MODEL_TRAINED:
+        try:
+            train_classifiers_from_df(result[0])  # df_all 사용
+        except Exception:
+            pass
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -2824,19 +3140,21 @@ def page_search(df_scored_all, df_all):
 # 14. 사이드바 네비게이션 (Compact 개선 + 기간선택 상단 + 신규 메뉴)
 # ══════════════════════════════════════════════════════════════════
 
-# ── 기존 9개 메뉴 + 신규 2개(인사이트, 교육자료) ──
+# ── 기존 9개 메뉴 + 신규 2개(인사이트, 교육자료) + 신규 2개(텍스트인텔리전스, 모델모니터) ──
 MENU_ITEMS = [
-    {"key": "개요",         "icon": "🏠", "label": "개요"},
-    {"key": "일자주차",     "icon": "📅", "label": "일자·주차"},
-    {"key": "점수분석",     "icon": "📊", "label": "점수분석"},
-    {"key": "주관식분석",   "icon": "💬", "label": "주관식"},
-    {"key": "히트맵",       "icon": "🗺️", "label": "히트맵"},
-    {"key": "Action필요",   "icon": "⚠️", "label": "Action"},
-    {"key": "상담사성과",   "icon": "👤", "label": "상담사성과"},
-    {"key": "70점미만",     "icon": "🔴", "label": "70점미만"},
-    {"key": "검색",         "icon": "🔍", "label": "검색"},
-    {"key": "인사이트",     "icon": "💡", "label": "인사이트"},
-    {"key": "교육자료",     "icon": "🎓", "label": "교육자료"},
+    {"key": "개요",             "icon": "🏠", "label": "개요"},
+    {"key": "일자주차",         "icon": "📅", "label": "일자·주차"},
+    {"key": "점수분석",         "icon": "📊", "label": "점수분석"},
+    {"key": "주관식분석",       "icon": "💬", "label": "주관식"},
+    {"key": "히트맵",           "icon": "🗺️", "label": "히트맵"},
+    {"key": "Action필요",       "icon": "⚠️", "label": "Action"},
+    {"key": "상담사성과",       "icon": "👤", "label": "상담사성과"},
+    {"key": "70점미만",         "icon": "🔴", "label": "70점미만"},
+    {"key": "검색",             "icon": "🔍", "label": "검색"},
+    {"key": "인사이트",         "icon": "💡", "label": "인사이트"},
+    {"key": "교육자료",         "icon": "🎓", "label": "교육자료"},
+    {"key": "텍스트인텔리전스", "icon": "🧠", "label": "텍스트AI"},
+    {"key": "모델모니터",       "icon": "🔬", "label": "모델모니터"},
 ]
 
 # ── 사이드바: 기간선택(상단) + compact 메뉴 ──
@@ -3892,6 +4210,447 @@ def page_education(df_m, df_scored_all, target_month):
 
 
 # ══════════════════════════════════════════════════════════════════
+# 14-A. 텍스트 인텔리전스 페이지 (신규)
+# ══════════════════════════════════════════════════════════════════
+def page_text_intelligence(df_m, df_scored_all, target_month):
+    page_header("🧠 텍스트 인텔리전스",
+                f"감성·의도 심층 분석  |  기준월: {target_month}")
+
+    voc_col   = next((c for c in ["주관식","verbatim","Q3","의견"] if c in df_m.columns), None)
+    sent_col  = "긍정부정"
+    intent_col = "의도분류"
+
+    if not voc_col:
+        st.warning("주관식 컬럼이 없습니다.")
+        return
+
+    src = df_m[df_m[voc_col].notna() & (df_m[voc_col].astype(str).str.strip() != "")].copy()
+    if src.empty:
+        st.info("분석할 텍스트 데이터가 없습니다.")
+        return
+
+    # 모델 상태 표시
+    model_badge = "🟢 ML 모델 활성" if _MODEL_TRAINED else "🟡 규칙 기반 폴백 (데이터 부족)"
+    st.markdown(f"""
+    <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
+                border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:16px;
+                display:flex;align-items:center;gap:8px;">
+        <b>분류 엔진:</b> {model_badge} &nbsp;|&nbsp;
+        <b>분석 대상:</b> {len(src):,}건 (주관식 응답)
+    </div>
+    """, unsafe_allow_html=True)
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 감성 트렌드", "🎯 의도 분석", "🚨 검토 필요 큐", "💡 개선요청 트래커"
+    ])
+
+    # ── TAB 1: 감성 트렌드 ──────────────────────────────────────────
+    with tab1:
+        section_title("감성 분포 (이번 달)", "📊")
+        if sent_col in src.columns:
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                sent_cnt = src[sent_col].value_counts().reindex(["긍정","중립","부정"], fill_value=0)
+                total_s  = sent_cnt.sum()
+                for lbl, cnt in sent_cnt.items():
+                    pct = round(cnt / total_s * 100, 1) if total_s > 0 else 0
+                    color = {"긍정": "#22c55e", "중립": "#f59e0b", "부정": "#ef4444"}.get(lbl, C_GRAY)
+                    st.markdown(f"""
+                    <div style="display:flex;justify-content:space-between;align-items:center;
+                                padding:8px 12px;border-radius:8px;margin-bottom:6px;
+                                background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);">
+                        <span style="font-weight:600;color:{color};">{lbl}</span>
+                        <span style="font-size:18px;font-weight:800;color:{color};">{cnt:,}건</span>
+                        <span style="font-size:12px;color:#64748b;">{pct}%</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            with c2:
+                fig = go.Figure(go.Bar(
+                    x=["긍정","중립","부정"],
+                    y=[sent_cnt.get("긍정",0), sent_cnt.get("중립",0), sent_cnt.get("부정",0)],
+                    marker=dict(color=["#22c55e","#f59e0b","#ef4444"],
+                                line=dict(color="white", width=1)),
+                    text=[f"{v:,}건" for v in [sent_cnt.get("긍정",0),
+                                               sent_cnt.get("중립",0),
+                                               sent_cnt.get("부정",0)]],
+                    textposition="outside",
+                ))
+                fig.update_layout(
+                    height=260, margin=dict(l=10,r=10,t=10,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR", size=13),
+                    showlegend=False,
+                    yaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        # 채널 / 브랜드별 감성 분포
+        section_title("채널·브랜드별 감성 분포", "📡")
+        grp_cols = [c for c in ["채널_구분","브랜드"] if c in src.columns and sent_col in src.columns]
+        for gcol in grp_cols:
+            grp = src.groupby([gcol, sent_col]).size().unstack(fill_value=0)
+            for lbl in ["긍정","중립","부정"]:
+                if lbl not in grp.columns:
+                    grp[lbl] = 0
+            grp = grp[["긍정","중립","부정"]].reset_index()
+            grp["총계"] = grp[["긍정","중립","부정"]].sum(axis=1)
+            grp["부정률(%)"] = (grp["부정"] / grp["총계"] * 100).round(1)
+            grp = grp.sort_values("부정률(%)", ascending=False)
+            st.caption(f"— {gcol} 기준")
+            st.dataframe(grp, use_container_width=True, hide_index=True)
+
+        # 신뢰도 분포
+        if "분류신뢰도" in src.columns and src["분류신뢰도"].notna().any():
+            section_title("분류 신뢰도 분포", "🎯")
+            fig_conf = go.Figure(go.Histogram(
+                x=src["분류신뢰도"].dropna(),
+                nbinsx=20,
+                marker=dict(color="#6366f1", opacity=0.8,
+                            line=dict(color="white", width=1)),
+            ))
+            fig_conf.update_layout(
+                height=220, margin=dict(l=10,r=10,t=10,b=10),
+                plot_bgcolor="white", paper_bgcolor="white",
+                font=dict(family="Inter, Noto Sans KR", size=12),
+                xaxis=dict(title="신뢰도", range=[0,1]),
+                yaxis=dict(title="건수"),
+            )
+            st.plotly_chart(fig_conf, use_container_width=True)
+
+    # ── TAB 2: 의도 분석 ──────────────────────────────────────────
+    with tab2:
+        if intent_col not in src.columns:
+            st.info("의도 분류 데이터가 없습니다. (add_sentiment_column 실행 필요)")
+        else:
+            section_title("의도 분포 (전체)", "🎯")
+            # 의도 파싱 (콤마 구분)
+            intent_rows = []
+            for _, row in src.iterrows():
+                intents = [i.strip() for i in str(row.get(intent_col,"")).split(",") if i.strip()]
+                for intent in intents:
+                    d = {intent_col: intent}
+                    for extra in [sent_col, "채널_구분", "브랜드", "최종점수"]:
+                        if extra in row.index:
+                            d[extra] = row[extra]
+                    intent_rows.append(d)
+            df_intent = pd.DataFrame(intent_rows) if intent_rows else pd.DataFrame()
+
+            if not df_intent.empty:
+                intent_cnt = df_intent[intent_col].value_counts().reset_index()
+                intent_cnt.columns = ["의도", "건수"]
+
+                c_i1, c_i2 = st.columns([2, 1])
+                with c_i1:
+                    fig_i = go.Figure(go.Bar(
+                        x=intent_cnt["건수"],
+                        y=intent_cnt["의도"],
+                        orientation="h",
+                        marker=dict(
+                            color=intent_cnt["건수"],
+                            colorscale=[[0,"rgba(99,102,241,0.25)"],[1,"#6366f1"]],
+                            showscale=False,
+                            line=dict(color="white", width=0.5),
+                        ),
+                        text=intent_cnt["건수"],
+                        textposition="outside",
+                    ))
+                    fig_i.update_layout(
+                        height=max(280, len(intent_cnt)*40 + 40),
+                        margin=dict(l=10,r=40,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=12),
+                        xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                        yaxis=dict(showgrid=False, autorange="reversed"),
+                    )
+                    st.plotly_chart(fig_i, use_container_width=True)
+                with c_i2:
+                    st.dataframe(intent_cnt, use_container_width=True, hide_index=True)
+
+                # 의도 × 감성 교차표
+                if sent_col in df_intent.columns:
+                    section_title("의도 × 감성 교차 분석", "🔀")
+                    cross = pd.crosstab(
+                        df_intent[intent_col], df_intent[sent_col]
+                    ).reindex(columns=["긍정","중립","부정"], fill_value=0)
+                    cross["합계"] = cross.sum(axis=1)
+                    cross["부정률(%)"] = (cross.get("부정",0) / cross["합계"] * 100).round(1)
+                    cross = cross.sort_values("부정률(%)", ascending=False)
+                    st.dataframe(cross.reset_index(), use_container_width=True, hide_index=True)
+
+    # ── TAB 3: 검토 필요 큐 ──────────────────────────────────────
+    with tab3:
+        section_title("검토 필요 항목 (모순·저신뢰도)", "🚨")
+        review_mask = (
+            (src.get("검토필요", pd.Series(False, index=src.index)) == True) |
+            (src.get("분류신뢰도", pd.Series(1.0, index=src.index)) < 0.5)
+        )
+        review_df = src[review_mask].copy()
+        if review_df.empty:
+            st.success("✅ 검토 필요 항목이 없습니다.")
+        else:
+            st.warning(f"⚠️ {len(review_df)}건이 낮은 신뢰도 또는 점수-감성 모순으로 검토가 필요합니다.")
+            disp_cols = get_display_cols(review_df,
+                ["회신일","상담사","브랜드","최종점수","주관식",
+                 "긍정부정","분류신뢰도","검토필요","의도분류"])
+            st.dataframe(
+                review_df[disp_cols].sort_values("분류신뢰도").reset_index(drop=True),
+                use_container_width=True, hide_index=True
+            )
+
+        # 부정 의도 상위 항목
+        section_title("🔴 상위 부정 의도 (즉시 조치 필요)", "")
+        if sent_col in src.columns and intent_col in src.columns:
+            neg_src = src[src[sent_col] == "부정"].copy()
+            if not neg_src.empty:
+                neg_intents = []
+                for _, row in neg_src.iterrows():
+                    for intent in [i.strip() for i in str(row.get(intent_col,"")).split(",") if i.strip()]:
+                        neg_intents.append(intent)
+                ni_cnt = Counter(neg_intents).most_common(10)
+                if ni_cnt:
+                    ni_df = pd.DataFrame(ni_cnt, columns=["의도","부정건수"])
+                    st.dataframe(ni_df, use_container_width=True, hide_index=True)
+
+    # ── TAB 4: 개선 요청 트래커 ──────────────────────────────────
+    with tab4:
+        section_title("📋 프로세스 개선 요청 목록", "")
+        if intent_col in src.columns:
+            improve_mask = src[intent_col].str.contains("프로세스개선", na=False)
+            improve_df   = src[improve_mask].copy()
+            if improve_df.empty:
+                st.info("이번 달 프로세스 개선 요청이 없습니다.")
+            else:
+                st.success(f"✅ {len(improve_df)}건의 개선 요청 감지")
+                disp = get_display_cols(improve_df,
+                    ["회신일","상담사","브랜드","채널_구분","최종점수","주관식","긍정부정"])
+                st.dataframe(improve_df[disp].reset_index(drop=True),
+                             use_container_width=True, hide_index=True)
+
+                # 개선 요청 키워드
+                section_title("개선 요청 주요 키워드", "🔑")
+                kws = extract_keywords(improve_df, 15)
+                if kws:
+                    kdf = pd.DataFrame(kws, columns=["키워드","빈도"])
+                    fig_k = go.Figure(go.Bar(
+                        x=kdf["빈도"], y=kdf["키워드"], orientation="h",
+                        marker=dict(color="#f59e0b", line=dict(color="white",width=0.5)),
+                        text=kdf["빈도"], textposition="outside",
+                    ))
+                    fig_k.update_layout(
+                        height=380, margin=dict(l=10,r=40,t=10,b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        font=dict(family="Inter, Noto Sans KR", size=12),
+                        xaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)"),
+                        yaxis=dict(showgrid=False, autorange="reversed"),
+                    )
+                    st.plotly_chart(fig_k, use_container_width=True)
+        else:
+            st.info("의도 분류 데이터가 없습니다.")
+
+        # 전체 월별 부정률 추이 (df_scored_all 기반)
+        section_title("📈 월별 감성 추이 (전체 기간)", "")
+        if sent_col in df_scored_all.columns and "회신월_정제" in df_scored_all.columns:
+            months_all = sorted([m for m in df_scored_all["회신월_정제"].dropna().unique()
+                                 if str(m) not in {"미확인","nan"}])
+            trend_rows = []
+            for m in months_all:
+                ms = df_scored_all[df_scored_all["회신월_정제"].astype(str) == m]
+                t  = len(ms[ms[voc_col].notna()]) if voc_col in ms.columns else len(ms)
+                if t == 0:
+                    continue
+                neg_r = len(ms[ms[sent_col] == "부정"])
+                pos_r = len(ms[ms[sent_col] == "긍정"])
+                trend_rows.append({
+                    "월": m,
+                    "긍정": pos_r,
+                    "부정": neg_r,
+                    "부정률(%)": round(neg_r/t*100,1),
+                })
+            if trend_rows:
+                tr_df = pd.DataFrame(trend_rows)
+                fig_tr = go.Figure()
+                fig_tr.add_trace(go.Scatter(
+                    x=tr_df["월"], y=tr_df["부정률(%)"],
+                    mode="lines+markers+text",
+                    text=tr_df["부정률(%)"].astype(str)+"%",
+                    textposition="top center",
+                    line=dict(color="#ef4444",width=2),
+                    marker=dict(size=8,color="#ef4444",line=dict(color="white",width=2)),
+                    name="부정률",
+                ))
+                fig_tr.update_layout(
+                    height=280, margin=dict(l=10,r=40,t=10,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR",size=12),
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(226,232,240,0.6)", title="%"),
+                )
+                st.plotly_chart(fig_tr, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 14-B. 모델 모니터 페이지 (신규)
+# ══════════════════════════════════════════════════════════════════
+def page_model_monitor(df_scored_all, target_month):
+    page_header("🔬 모델 모니터",
+                "분류 신뢰도·드리프트·약지도 평가  |  ML 분류기 성능 모니터링")
+
+    st.markdown(f"""
+    <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);
+                border-radius:8px;padding:10px 16px;font-size:12px;color:#0f172a;margin-bottom:16px;">
+        <b>현재 엔진:</b> {"🟢 TF-IDF + LogReg ML 모델" if _MODEL_TRAINED else "🟡 규칙 기반 폴백"}
+        &nbsp;|&nbsp; <b>의도 레이블:</b> {", ".join(INTENT_LABELS)}
+    </div>
+    """, unsafe_allow_html=True)
+
+    sent_col = "긍정부정"
+    src = df_scored_all.copy()
+
+    if not _MODEL_TRAINED:
+        st.warning("ML 모델이 학습되지 않았습니다. 데이터가 충분하면 자동 학습됩니다.")
+        if st.button("🔄 모델 재학습 시도"):
+            with st.spinner("학습 중..."):
+                success = train_classifiers_from_df(src)
+            if success:
+                st.success("✅ 모델 학습 완료! 페이지를 새로고침하세요.")
+            else:
+                st.error("학습 실패 (데이터 부족 또는 sklearn 없음)")
+        return
+
+    tab_a, tab_b, tab_c = st.tabs(["신뢰도 분포", "월별 드리프트", "약지도 평가"])
+
+    # ── 신뢰도 분포 ──
+    with tab_a:
+        if "분류신뢰도" in src.columns and src["분류신뢰도"].notna().any():
+            section_title("전체 신뢰도 히스토그램", "📊")
+            conf_data = src["분류신뢰도"].dropna()
+            low_conf_rate = round((conf_data < 0.55).sum() / len(conf_data) * 100, 1)
+
+            c1, c2, c3 = st.columns(3)
+            with c1: kpi_card("평균 신뢰도", f"{conf_data.mean():.3f}")
+            with c2: kpi_card("저신뢰도 비율", f"{low_conf_rate}%",
+                               delta_color=C_RED if low_conf_rate > 20 else C_GREEN)
+            with c3: kpi_card("검토필요 건수",
+                               str(int(src.get("검토필요", pd.Series(False)).sum()))+"건")
+
+            fig = go.Figure(go.Histogram(
+                x=conf_data, nbinsx=20,
+                marker=dict(color="#6366f1", opacity=0.85,
+                            line=dict(color="white", width=1)),
+            ))
+            fig.add_vline(x=0.55, line_dash="dash", line_color="#ef4444",
+                          annotation_text="검토임계(0.55)", line_width=1.5)
+            fig.update_layout(
+                height=280, margin=dict(l=10,r=80,t=10,b=10),
+                plot_bgcolor="white", paper_bgcolor="white",
+                font=dict(family="Inter, Noto Sans KR", size=12),
+                xaxis=dict(title="신뢰도", range=[0,1]),
+                yaxis=dict(title="건수"),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # 감성별 신뢰도 박스
+            if sent_col in src.columns:
+                section_title("감성 레이블별 신뢰도", "🎯")
+                box_data = []
+                for lbl in ["긍정","중립","부정"]:
+                    vals = src[src[sent_col]==lbl]["분류신뢰도"].dropna().tolist()
+                    box_data.append(go.Box(y=vals, name=lbl,
+                        marker_color={"긍정":"#22c55e","중립":"#f59e0b","부정":"#ef4444"}.get(lbl,"#6366f1")))
+                fig_b = go.Figure(box_data)
+                fig_b.update_layout(
+                    height=280, margin=dict(l=10,r=10,t=10,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR", size=12),
+                    yaxis=dict(title="신뢰도", range=[0,1]),
+                )
+                st.plotly_chart(fig_b, use_container_width=True)
+        else:
+            st.info("신뢰도 데이터 없음 (분류 결과 컬럼 확인)")
+
+    # ── 월별 드리프트 ──
+    with tab_b:
+        section_title("월별 저신뢰도 비율 드리프트", "📈")
+        if "분류신뢰도" in src.columns and "회신월_정제" in src.columns:
+            drift_rows = []
+            months_d = sorted([m for m in src["회신월_정제"].dropna().unique()
+                                if str(m) not in {"미확인","nan"}])
+            for m in months_d:
+                ms = src[src["회신월_정제"].astype(str) == m]
+                cd = ms["분류신뢰도"].dropna()
+                if len(cd) == 0:
+                    continue
+                drift_rows.append({
+                    "월": m,
+                    "평균신뢰도": round(cd.mean(), 3),
+                    "저신뢰도율(%)": round((cd < 0.55).sum() / len(cd) * 100, 1),
+                    "검토필요건수": int(ms.get("검토필요", pd.Series(False)).sum()),
+                })
+            if drift_rows:
+                dr_df = pd.DataFrame(drift_rows)
+                st.dataframe(dr_df, use_container_width=True, hide_index=True)
+                fig_dr = go.Figure()
+                fig_dr.add_trace(go.Scatter(
+                    x=dr_df["월"], y=dr_df["저신뢰도율(%)"],
+                    mode="lines+markers",
+                    line=dict(color="#f59e0b", width=2),
+                    marker=dict(size=7),
+                    name="저신뢰도율(%)",
+                ))
+                fig_dr.update_layout(
+                    height=260, margin=dict(l=10,r=40,t=10,b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(family="Inter, Noto Sans KR", size=12),
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(title="%", showgrid=True,
+                               gridcolor="rgba(226,232,240,0.6)"),
+                )
+                st.plotly_chart(fig_dr, use_container_width=True)
+        else:
+            st.info("데이터 없음")
+
+    # ── 약지도 평가 ──
+    with tab_c:
+        section_title("약지도 레이블 vs ML 분류 일치율", "📋")
+        voc_col = next((c for c in ["주관식","verbatim","Q3","의견"] if c in src.columns), None)
+        score_col = "최종점수" if "최종점수" in src.columns else None
+        if voc_col and sent_col in src.columns:
+            sub = src[src[voc_col].notna()].copy()
+            sub = sub[sub[voc_col].astype(str).str.strip() != ""].copy()
+            if len(sub) > 0:
+                texts  = sub[voc_col].astype(str).tolist()
+                scores = sub[score_col].tolist() if score_col else [None]*len(sub)
+                weak   = _make_weak_labels(texts, scores)
+                ml     = sub[sent_col].tolist()
+                agree  = sum(1 for w, m in zip(weak, ml) if w == m and w is not None and m is not None)
+                total  = sum(1 for w, m in zip(weak, ml) if w is not None and m is not None)
+                rate   = round(agree/total*100,1) if total > 0 else 0
+                st.metric("약지도 레이블 일치율", f"{rate}%",
+                          help="규칙+점수 기반 약지도 레이블과 ML 예측의 일치율")
+
+                # 불일치 샘플 (랜덤 10건)
+                disagree_idx = [i for i, (w,m) in enumerate(zip(weak, ml))
+                                if w is not None and m is not None and w != m]
+                if disagree_idx:
+                    st.caption(f"불일치 건수: {len(disagree_idx)}건")
+                    sample_idx = disagree_idx[:min(15, len(disagree_idx))]
+                    sample_rows = []
+                    for i in sample_idx:
+                        row = sub.iloc[i]
+                        sample_rows.append({
+                            "주관식": str(row.get(voc_col,""))[:60],
+                            "점수": row.get("최종점수",""),
+                            "약지도": weak[i],
+                            "ML예측": ml[i],
+                            "신뢰도": row.get("분류신뢰도",""),
+                        })
+                    st.dataframe(pd.DataFrame(sample_rows),
+                                 use_container_width=True, hide_index=True)
+        else:
+            st.info("비교할 데이터 없음")
+
+
+# ══════════════════════════════════════════════════════════════════
 # 15. Streamlit App 메인 (개선)
 # ══════════════════════════════════════════════════════════════════
 def main():
@@ -3991,6 +4750,12 @@ def main():
 
         elif menu == "교육자료":
             page_education(df_m, df_scored_all, target_month)
+
+        elif menu == "텍스트인텔리전스":
+            page_text_intelligence(df_m, df_scored_all, target_month)
+
+        elif menu == "모델모니터":
+            page_model_monitor(df_scored_all, target_month)
 
         else:
             st.session_state["menu"] = "개요"
