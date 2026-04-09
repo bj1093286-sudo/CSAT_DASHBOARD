@@ -1090,8 +1090,43 @@ def get_display_cols(df: pd.DataFrame, preferred: list) -> list:
 @st.cache_data(ttl=600)
 def load_from_gsheets() -> pd.DataFrame:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df   = conn.read(ttl="10m")
-    df   = df.dropna(axis=0, how="all").dropna(axis=1, how="all").reset_index(drop=True)
+    raw  = conn.read(ttl="10m")
+
+    # ── 반환값이 DataFrame이 아닌 경우 처리 ──
+    if isinstance(raw, dict):
+        # {"columns": [...], "data": [...], "index": [...]} 형태
+        if "columns" in raw and "data" in raw:
+            df = pd.DataFrame(raw["data"], columns=raw["columns"])
+        elif "columns" in raw and "index" in raw:
+            # data 키 없이 columns + index만 있는 경우 (빈 데이터)
+            df = pd.DataFrame(columns=raw.get("columns", []))
+        else:
+            # 일반 dict → DataFrame 변환 시도
+            df = pd.DataFrame(raw)
+    elif isinstance(raw, str):
+        import json
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and "columns" in parsed and "data" in parsed:
+                df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+            elif isinstance(parsed, list):
+                df = pd.DataFrame(parsed)
+            else:
+                df = pd.DataFrame(parsed)
+        except Exception:
+            st.error("Google Sheets 데이터를 파싱할 수 없습니다.")
+            return pd.DataFrame()
+    elif isinstance(raw, pd.DataFrame):
+        df = raw.copy()
+    else:
+        try:
+            df = pd.DataFrame(raw)
+        except Exception:
+            st.error(f"알 수 없는 데이터 형식: {type(raw)}")
+            return pd.DataFrame()
+
+    # ── 기존 정리 로직 그대로 ──
+    df = df.dropna(axis=0, how="all").dropna(axis=1, how="all").reset_index(drop=True)
     return df
 
 
