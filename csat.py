@@ -4352,9 +4352,8 @@ def main():
         elif menu == "70점미만":
             page_low_scores(df_scored_all, target_month=target_month)
 
-        elif menu == "70점미만모니터링":                          # ← 추가
-            SPREADSHEET_ID = "1ujtxIKZJRR9vIC1TS5GWWEtM9luChlDJk4NwTqeYB2Q"
-            page_under70_analysis(df_scored_all, SPREADSHEET_ID)
+        elif menu == "70점미만모니터링":
+            page_under70()
 
         elif menu == "검색":
             page_search(df_scored_all, df_all)
