@@ -32,7 +32,7 @@ def load_monitoring_sheet():
     """gid 기반 CSV export로 직접 로드"""
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
-        df_raw = pd.read_csv(url, dtype=str)
+        df_raw = pd.read_csv(url, dtype=str, header=0)
     except Exception as e:
         st.error(f"시트 로드 실패: {e}")
         return pd.DataFrame()
@@ -42,10 +42,13 @@ def load_monitoring_sheet():
 
     df_raw = df_raw.astype(str)
 
+    # ── 데이터 시작행 탐지 ──
+    # 첫 컬럼이 "1월", "2월" 등 "X월" 패턴인 행이 데이터
     data_start = None
     for i in range(len(df_raw)):
         val = str(df_raw.iloc[i, 0]).strip()
-        if val.isdigit() and int(val) > 0:
+        # "1월", "2월" ... 또는 숫자만
+        if val and (val.replace("월", "").isdigit() or val.isdigit()):
             data_start = i
             break
     if data_start is None:
@@ -87,9 +90,20 @@ def load_monitoring_sheet():
     data = data[data["상담이력KEY"] != ""].copy()
     data = data[data["최종점수"] != ""].copy()
 
-    for c in ["최종점수", "친절점수", "만족점수", "이행점수",
-              "회신월", "발송월", "회신주차", "발송주차", "WK"]:
+    # ── 회신월 정리: "1월" → 1 ──
+    if "회신월" in data.columns:
+        data["회신월"] = data["회신월"].str.replace("월", "").str.strip()
+        data["회신월"] = pd.to_numeric(data["회신월"], errors="coerce")
+
+    # ── 최종점수 정리: "50%" → 50, "20" → 20 ──
+    for c in ["최종점수", "친절점수", "만족점수", "이행점수"]:
         if c in data.columns:
+            data[c] = data[c].str.replace("%", "").str.strip()
+            data[c] = pd.to_numeric(data[c], errors="coerce")
+
+    for c in ["발송월", "회신주차", "발송주차", "WK"]:
+        if c in data.columns:
+            data[c] = data[c].str.replace("월", "").str.replace("WK", "").str.strip()
             data[c] = pd.to_numeric(data[c], errors="coerce")
 
     return data
