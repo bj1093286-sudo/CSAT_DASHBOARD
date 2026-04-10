@@ -34,7 +34,7 @@ def load_monitoring_sheet():
         conn = st.connection("gsheets", type=GSheetsConnection)
         df_raw = conn.read(
             spreadsheet=SHEET_ID,
-            worksheet=1,
+            worksheet="모니터링 QA",
         )
     except Exception as e:
         st.error(f"시트 로드 실패: {e}")
