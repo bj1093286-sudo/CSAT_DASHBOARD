@@ -9,8 +9,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import gspread
-from google.oauth2.service_account import Credentials
+from streamlit_gsheets import GSheetsConnection
 
 # ── 색상 토큰 (main.py 동일) ─────────────────────────────────
 C_PRIMARY = "#6366f1"
@@ -30,40 +29,25 @@ GID      = 2055211445          # 두 번째 시트
 
 @st.cache_data(ttl=600, show_spinner="모니터링 시트 로딩 중…")
 def load_monitoring_sheet():
-    """gid=2055211445 시트를 DataFrame으로 반환"""
+    """GSheetsConnection 으로 두 번째 시트 로드"""
     try:
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(
-            creds_dict,
-            scopes=[
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive",
-            ],
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df_raw = conn.read(
+            spreadsheet=SHEET_ID,
+            worksheet=1,
         )
-        gc = gspread.authorize(creds)
-        sh = gc.open_by_key(SHEET_ID)
-        # gid 로 워크시트 찾기
-        ws = None
-        for w in sh.worksheets():
-            if w.id == GID:
-                ws = w
-                break
-        if ws is None:
-            ws = sh.get_worksheet(1)   # fallback: 두 번째 시트
-        rows = ws.get_all_values()
     except Exception as e:
         st.error(f"시트 로드 실패: {e}")
         return pd.DataFrame()
 
-    if len(rows) < 7:
-        st.error("시트에 데이터가 부족합니다.")
+    if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
-    # ── 헤더 행 스킵 & 데이터 시작점 탐색 ──
-    # 첫 번째 컬럼이 숫자(회신월)인 행이 데이터 시작
+    df_raw = df_raw.astype(str)
+
     data_start = None
-    for i, row in enumerate(rows):
-        val = str(row[0]).strip()
+    for i in range(len(df_raw)):
+        val = str(df_raw.iloc[i, 0]).strip()
         if val.isdigit() and int(val) > 0:
             data_start = i
             break
@@ -71,93 +55,47 @@ def load_monitoring_sheet():
         st.error("데이터 시작 행을 찾을 수 없습니다.")
         return pd.DataFrame()
 
-    data_rows = rows[data_start:]
+    data = df_raw.iloc[data_start:].copy().reset_index(drop=True)
+    ncols = data.shape[1]
 
-    # ── 컬럼 수 확인 후 매핑 (위치 기반) ──
-    ncols = len(data_rows[0]) if data_rows else 0
-    # 필요한 핵심 컬럼만 위치 기반으로 잡기
-    # 엑셀 기준 컬럼 인덱스 (0-based):
     COL_IDX = {
-        "회신월":     0,
-        "발송월":     1,
-        "회신주차":   2,
-        "발송주차":   3,
-        "발송일자":   4,
-        "회신일자":   5,
-        "사업자":     6,
-        "브랜드":     7,
-        "채널":       8,
-        "상담사":     9,
-        "입사일":     10,
-        "상담사근속": 11,
-        "상담유형대": 12,
-        "상담유형중": 13,
-        "상담유형소": 14,
-        "키워드":     15,
-        "긍정부정":   16,
-        "유형":       17,
-        "총합":       18,
-        "Q1":         19,
-        "Q2":         20,
-        "Q3":         21,
-        "친절점수":   22,
-        "만족점수":   23,
-        "최종점수":   24,
-        "만족율":     25,
-        "WK":         26,
-        "상담이력KEY": 27,
-        # ── QA 모니터링 ──
-        "문의유형":     28,
-        "귀책분류":     29,
-        "문의불만사유": 30,
-        # 정확성(30) 서브항목
-        "정확한안내":   31,   # (10)
-        "프로세스":     32,   # (10)
-        "전산처리":     33,   # (10)
-        # 숙련도(20) 서브항목
-        "맞춤설명":     34,   # (10)
-        "문의파악":     35,   # (5)
-        "숙련도_채널":  36,   # Call_음성숙련도 / Chat_대기 (5)
-        # 친절도(30) 서브항목
-        "친절도_감정":  37,   # Call_전반적인감정연출 / Chat_양해 (10)
-        "친절도_경청":  38,   # Call_경청 / Chat_즉각호응 (15)
-        "언어표현":     39,   # (5)
-        # 약속이행(20) 서브항목
-        "약속불이행":   40,   # (10)
-        "약속지연이행": 41,   # (5)
-        "약속시간누락": 42,   # (5)
-        # 이행점수
-        "이행점수":     43,
-        # 상세분석
-        "상세분석":     44,
-        "피드백여부":   45,
-        "주문번호":     46,
+        "회신월": 0, "발송월": 1, "회신주차": 2, "발송주차": 3,
+        "발송일자": 4, "회신일자": 5, "사업자": 6, "브랜드": 7,
+        "채널": 8, "상담사": 9, "입사일": 10, "상담사근속": 11,
+        "상담유형대": 12, "상담유형중": 13, "상담유형소": 14,
+        "키워드": 15, "긍정부정": 16, "유형": 17,
+        "총합": 18, "Q1": 19, "Q2": 20, "Q3": 21,
+        "친절점수": 22, "만족점수": 23, "최종점수": 24,
+        "만족율": 25, "WK": 26, "상담이력KEY": 27,
+        "문의유형": 28, "귀책분류": 29, "문의불만사유": 30,
+        "정확한안내": 31, "프로세스": 32, "전산처리": 33,
+        "맞춤설명": 34, "문의파악": 35, "숙련도_채널": 36,
+        "친절도_감정": 37, "친절도_경청": 38, "언어표현": 39,
+        "약속불이행": 40, "약속지연이행": 41, "약속시간누락": 42,
+        "이행점수": 43, "상세분석": 44, "피드백여부": 45,
+        "주문번호": 46,
     }
 
-    # 컬럼 추출
-    parsed = []
-    for row in data_rows:
-        r = {}
-        for col_name, idx in COL_IDX.items():
-            if idx < len(row):
-                val = str(row[idx]).strip()
-                r[col_name] = val if val and val.lower() != "nan" else ""
-            else:
-                r[col_name] = ""
-        parsed.append(r)
+    rename = {}
+    for col_name, idx in COL_IDX.items():
+        if idx < ncols:
+            rename[data.columns[idx]] = col_name
+    data.rename(columns=rename, inplace=True)
 
-    df = pd.DataFrame(parsed)
+    for c in data.columns:
+        data[c] = data[c].apply(
+            lambda x: "" if str(x).strip().lower() in ("nan", "none", "") else str(x).strip()
+        )
 
-    # ── 빈 행 제거 (상담이력KEY 기준 — 머지셀 빈 행) ──
-    df = df[df["상담이력KEY"].str.strip() != ""].copy()
-    df = df[df["최종점수"].str.strip() != ""].copy()
+    data = data[data["상담이력KEY"] != ""].copy()
+    data = data[data["최종점수"] != ""].copy()
 
-    # ── 숫자 변환 ──
     for c in ["최종점수", "친절점수", "만족점수", "이행점수",
               "회신월", "발송월", "회신주차", "발송주차", "WK"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+        if c in data.columns:
+            data[c] = pd.to_numeric(data[c], errors="coerce")
 
-    return df
+    return data
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
