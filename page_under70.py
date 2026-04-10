@@ -29,13 +29,10 @@ GID      = 2055211445          # 두 번째 시트
 
 @st.cache_data(ttl=600, show_spinner="모니터링 시트 로딩 중…")
 def load_monitoring_sheet():
-    """GSheetsConnection 으로 두 번째 시트 로드"""
+    """gid 기반 CSV export로 직접 로드"""
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        df_raw = conn.read(
-            spreadsheet=SHEET_ID,
-            worksheet="모니터링 QA",
-        )
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
+        df_raw = pd.read_csv(url, dtype=str)
     except Exception as e:
         st.error(f"시트 로드 실패: {e}")
         return pd.DataFrame()
