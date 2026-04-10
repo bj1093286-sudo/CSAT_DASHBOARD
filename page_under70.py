@@ -1,7 +1,10 @@
 # ──────────────────────────────────────────────────────────────
 #  page_under70.py
-#  70점 미만 QA 모니터링 교차분석 페이지 (v2 - 디벨롭)
+#  70점 미만 QA 모니터링 교차분석 페이지 (v3 - 디벨롭)
 # ──────────────────────────────────────────────────────────────
+
+import re
+from collections import Counter
 
 import streamlit as st
 import pandas as pd
@@ -11,17 +14,123 @@ import plotly.graph_objects as go
 from streamlit_gsheets import GSheetsConnection
 
 # ── 색상 토큰 ─────────────────────────────────────────────────
-C_PRIMARY = "#6366f1"
-C_SUCCESS = "#22c55e"
-C_WARNING = "#f59e0b"
-C_DANGER  = "#ef4444"
-C_BG_CARD = "#ffffff"
-C_BORDER  = "#e2e8f0"
-C_TEXT    = "#1e293b"
-C_TEXT_SUB = "#64748b"
+C_PRIMARY   = "#6366f1"
+C_PRIMARY_L = "#818cf8"
+C_SUCCESS   = "#22c55e"
+C_SUCCESS_L = "#86efac"
+C_WARNING   = "#f59e0b"
+C_WARNING_L = "#fcd34d"
+C_DANGER    = "#ef4444"
+C_DANGER_L  = "#fca5a5"
+C_BG_CARD   = "#ffffff"
+C_BG_PAGE   = "#f8fafc"
+C_BORDER    = "#e2e8f0"
+C_TEXT      = "#1e293b"
+C_TEXT_SUB  = "#64748b"
+
+CHANNEL_COLORS = {
+    "전화 IN": "#6366f1", "전화 OUT": "#818cf8",
+    "채팅": "#f59e0b", "이메일": "#22c55e",
+    "게시판": "#ec4899", "기타": "#94a3b8",
+}
 
 SHEET_ID = "1ujtxIKZJRR9vIC1TS5GWWEtM9luChlDJk4NwTqeYB2Q"
 GID      = 2055211445
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  0. 글로벌 CSS (Noto Sans KR + KPI 카드)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def inject_custom_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+
+    html, body, [class*="css"], .stMarkdown, .stDataFrame,
+    .stSelectbox, .stMultiSelect, .stTextInput, .stMetric,
+    h1, h2, h3, h4, h5, h6, p, span, div, label, td, th {
+        font-family: 'Noto Sans KR', sans-serif !important;
+    }
+    .kpi-row { display: flex; gap: 14px; margin-bottom: 18px; }
+    .kpi-bar {
+        flex: 1;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 0;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+        transition: transform .15s;
+    }
+    .kpi-bar:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.10); }
+    .kpi-bar-top { height: 6px; }
+    .kpi-bar-body { padding: 16px 18px 14px; }
+    .kpi-label {
+        font-size: 12px; font-weight: 500; color: #64748b;
+        margin-bottom: 4px; letter-spacing: -0.02em;
+    }
+    .kpi-value {
+        font-size: 28px; font-weight: 900; letter-spacing: -0.03em;
+        line-height: 1.15;
+    }
+    .kpi-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .section-divider {
+        border: none; border-top: 2px solid #e2e8f0;
+        margin: 32px 0 24px;
+    }
+    .section-title {
+        font-size: 20px; font-weight: 700; color: #1e293b;
+        margin-bottom: 4px; letter-spacing: -0.02em;
+    }
+    .section-caption { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+    .ch-badge {
+        display: inline-block; padding: 3px 10px; border-radius: 20px;
+        font-size: 11px; font-weight: 700; color: #fff; margin-right: 4px;
+    }
+    .profile-card {
+        background: #f8fafc; border: 1px solid #e2e8f0;
+        border-radius: 14px; padding: 20px; margin-bottom: 16px;
+    }
+    .profile-card h4 { margin: 0 0 8px; color: #1e293b; }
+    .profile-tag {
+        display: inline-block; background: #6366f1; color: #fff;
+        padding: 2px 10px; border-radius: 12px; font-size: 11px;
+        font-weight: 600; margin: 2px 4px 2px 0;
+    }
+    .profile-tag.warn { background: #ef4444; }
+    .profile-tag.ok   { background: #22c55e; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def kpi_card_html(label, value, sub="", color=C_PRIMARY):
+    return f"""
+    <div class="kpi-bar">
+        <div class="kpi-bar-top" style="background:{color};"></div>
+        <div class="kpi-bar-body">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value" style="color:{color};">{value}</div>
+            <div class="kpi-sub">{sub}</div>
+        </div>
+    </div>
+    """
+
+
+def render_kpi_row(cards_html: list):
+    inner = "".join(cards_html)
+    st.markdown(f'<div class="kpi-row">{inner}</div>', unsafe_allow_html=True)
+
+
+def section_header(title, caption=""):
+    html = f'<hr class="section-divider"><div class="section-title">{title}</div>'
+    if caption:
+        html += f'<div class="section-caption">{caption}</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def ch_color(channel):
+    return CHANNEL_COLORS.get(channel, "#94a3b8")
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  1. 시트 로드
@@ -112,13 +221,13 @@ QA_SUB_ITEMS = {
     "약속이행(20)": {"약속불이행": 10, "약속지연이행": 5, "약속시간누락": 5},
 }
 
-# 서브항목 한글 라벨
 SUB_LABELS = {
     "정확한안내": "정확한안내(10)", "프로세스": "프로세스(10)", "전산처리": "전산처리(10)",
     "맞춤설명": "맞춤설명(10)", "문의파악": "문의파악(5)", "숙련도_채널": "숙련도/채널(5)",
     "친절도_감정": "감정연출/양해(10)", "친절도_경청": "경청/즉각호응(15)", "언어표현": "언어표현(5)",
     "약속불이행": "약속불이행(10)", "약속지연이행": "약속지연이행(5)", "약속시간누락": "시간안내누락(5)",
 }
+
 
 def calc_deductions(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -139,11 +248,106 @@ def calc_deductions(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  3. 페이지 렌더
+#  3. 상세분석(AS열) 종합 분석 유틸
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def extract_analysis_keywords(texts: pd.Series, top_n=15) -> pd.DataFrame:
+    """상세분석 텍스트에서 핵심 키워드/패턴 추출"""
+    stop = {"있음", "없음", "함", "됨", "임", "것", "등", "및", "더", "로", "을", "를", "이", "가",
+            "의", "에", "은", "는", "한", "하", "고", "도", "다", "수", "중", "대", "해", "안"}
+    words = []
+    for t in texts.dropna():
+        t = str(t).strip()
+        if not t:
+            continue
+        tokens = re.findall(r'[가-힣]{2,}', t)
+        words.extend([w for w in tokens if w not in stop])
+    if not words:
+        return pd.DataFrame(columns=["키워드", "빈도"])
+    freq = Counter(words).most_common(top_n)
+    return pd.DataFrame(freq, columns=["키워드", "빈도"])
+
+
+def build_agent_profile(df_agent: pd.DataFrame, agent_name: str) -> dict:
+    """상담사 1인의 종합 프로파일 생성"""
+    n = len(df_agent)
+    profile = {
+        "상담사": agent_name,
+        "건수": n,
+        "평균CSAT": round(df_agent["최종점수"].mean(), 1) if n else 0,
+        "평균QA이행": round(df_agent["QA이행점수"].mean(), 1) if n else 0,
+        "주요귀책": df_agent["귀책분류"].mode().iloc[0] if n and not df_agent["귀책분류"].mode().empty else "-",
+    }
+
+    # 가장 많이 차감된 대분류
+    cat_cols = {"정확성(30)_차감": "정확성", "숙련도(20)_차감": "숙련도",
+                "친절도(30)_차감": "친절도", "약속이행(20)_차감": "약속이행"}
+    cat_means = {v: round(df_agent[k].mean(), 1) for k, v in cat_cols.items() if k in df_agent.columns}
+    if cat_means:
+        worst_cat = max(cat_means, key=cat_means.get)
+        profile["최다차감분류"] = worst_cat
+        profile["최다차감점수"] = cat_means[worst_cat]
+    else:
+        profile["최다차감분류"] = "-"
+        profile["최다차감점수"] = 0
+
+    # 가장 많이 차감된 세부항목
+    sub_flags = [c for c in df_agent.columns if c.endswith("_감점")]
+    if sub_flags:
+        sub_sums = df_agent[sub_flags].sum()
+        worst_sub = sub_sums.idxmax().replace("_감점", "")
+        profile["최다차감항목"] = SUB_LABELS.get(worst_sub, worst_sub)
+        profile["최다차감항목건수"] = int(sub_sums.max())
+    else:
+        profile["최다차감항목"] = "-"
+        profile["최다차감항목건수"] = 0
+
+    # 채널별 성과
+    ch_perf = {}
+    for ch in df_agent["채널"].unique():
+        ch_df = df_agent[df_agent["채널"] == ch]
+        ch_perf[ch] = {
+            "건수": len(ch_df),
+            "평균CSAT": round(ch_df["최종점수"].mean(), 1),
+            "평균QA이행": round(ch_df["QA이행점수"].mean(), 1),
+            "상담사귀책건수": int((ch_df["귀책분류"] == "상담사").sum()),
+        }
+    profile["채널별성과"] = ch_perf
+
+    # 상세분석 키워드
+    kw = extract_analysis_keywords(df_agent["상세분석"], top_n=10)
+    profile["상세분석키워드"] = kw
+
+    # 종합 코멘트 자동생성
+    comments = []
+    if profile["평균QA이행"] < 70:
+        comments.append(f"QA이행점수 평균 {profile['평균QA이행']}점으로 심각한 수준")
+    elif profile["평균QA이행"] < 85:
+        comments.append(f"QA이행점수 평균 {profile['평균QA이행']}점으로 개선 필요")
+    if profile["최다차감점수"] >= 10:
+        comments.append(f"'{profile['최다차감분류']}' 영역 평균 {profile['최다차감점수']}점 차감 — 집중 코칭 필요")
+    if profile["최다차감항목건수"] >= 3:
+        comments.append(f"'{profile['최다차감항목']}' 반복 지적 {profile['최다차감항목건수']}건")
+
+    # 채널 취약점
+    for ch, perf in ch_perf.items():
+        if perf["건수"] >= 2 and perf["평균QA이행"] < 75:
+            comments.append(f"⚠️ [{ch}] 채널 QA이행 {perf['평균QA이행']}점 — 채널별 취약")
+        if perf["건수"] >= 2 and perf["상담사귀책건수"] / perf["건수"] >= 0.7:
+            pct = round(perf["상담사귀책건수"] / perf["건수"] * 100)
+            comments.append(f"⚠️ [{ch}] 채널 상담사 귀책율 {pct}%")
+
+    profile["종합코멘트"] = comments if comments else ["현재 특이사항 없음"]
+    return profile
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  4. 페이지 렌더
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def page_under70():
-    st.markdown("## 70점 미만 QA 모니터링 교차분석")
-    st.caption("CSAT 최종점수 70점 미만 · 모니터링 이행평가 · 귀책 · 차감사유 · 고객코멘트 교차분석")
+    inject_custom_css()
+
+    st.markdown("## 📋 70점 미만 QA 모니터링 교차분석")
+    st.caption("CSAT 최종점수 70점 미만 · 모니터링 이행평가 · 귀책 · 차감사유 · 고객코멘트 · 상담사 종합 프로파일")
 
     df_raw = load_monitoring_sheet()
     if df_raw.empty:
@@ -153,7 +357,7 @@ def page_under70():
     df = calc_deductions(df_raw)
 
     # ── 필터 ──────────────────────────────────────────────────
-    with st.expander("필터 설정", expanded=True):
+    with st.expander("🔍 필터 설정", expanded=True):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             months = sorted(df["회신월"].dropna().unique())
@@ -181,25 +385,53 @@ def page_under70():
         return
 
     # ══════════════════════════════════════════════════════════
-    #  SECTION 1 — 전체 KPI
+    #  SECTION 1 — 전체 KPI (예쁜 카드 바)
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 전체 현황")
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("모니터링 건수", f"{len(df_f)}건")
-    k2.metric("평균 CSAT", f"{df_f['최종점수'].mean():.1f}")
-    k3.metric("평균 QA이행", f"{df_f['QA이행점수'].mean():.1f}")
-    k4.metric("평균 차감", f"{df_f['QA총차감'].mean():.1f}")
-    # 상담사귀책 비율
-    agent_blame_cnt = len(df_f[df_f["귀책분류"] == "상담사"])
-    agent_blame_pct = agent_blame_cnt / len(df_f) * 100 if len(df_f) > 0 else 0
-    k5.metric("상담사귀책 비율", f"{agent_blame_pct:.1f}%", f"{agent_blame_cnt}건")
+    section_header("전체 현황", "필터 적용 기준 모니터링 핵심 지표")
+
+    total = len(df_f)
+    avg_csat = df_f["최종점수"].mean()
+    avg_qa = df_f["QA이행점수"].mean()
+    avg_ded = df_f["QA총차감"].mean()
+    agent_blame_cnt = int((df_f["귀책분류"] == "상담사").sum())
+    agent_blame_pct = agent_blame_cnt / total * 100 if total else 0
+
+    render_kpi_row([
+        kpi_card_html("모니터링 건수", f"{total}건", "전체 필터 적용", C_PRIMARY),
+        kpi_card_html("평균 CSAT", f"{avg_csat:.1f}점",
+                      "양호" if avg_csat >= 70 else "주의", C_SUCCESS if avg_csat >= 70 else C_DANGER),
+        kpi_card_html("평균 QA이행", f"{avg_qa:.1f}점",
+                      "양호" if avg_qa >= 85 else "개선필요", C_SUCCESS if avg_qa >= 85 else C_WARNING),
+        kpi_card_html("평균 차감", f"{avg_ded:.1f}점", "낮을수록 양호", C_WARNING),
+        kpi_card_html("상담사 귀책", f"{agent_blame_pct:.1f}%", f"{agent_blame_cnt}건 / {total}건", C_DANGER),
+    ])
+
+    # ── 채널별 KPI ──
+    st.markdown("")
+    st.markdown("**채널별 KPI**")
+    ch_groups = df_f.groupby("채널")
+    ch_cards = []
+    for ch_name in sorted(df_f["채널"].unique()):
+        ch_df = ch_groups.get_group(ch_name)
+        ch_n = len(ch_df)
+        ch_csat = ch_df["최종점수"].mean()
+        ch_qa = ch_df["QA이행점수"].mean()
+        ch_blame = int((ch_df["귀책분류"] == "상담사").sum())
+        ch_blame_p = ch_blame / ch_n * 100 if ch_n else 0
+        color = ch_color(ch_name)
+        ch_cards.append(kpi_card_html(
+            f"📞 {ch_name}",
+            f"{ch_n}건",
+            f"CSAT {ch_csat:.1f} · QA {ch_qa:.1f} · 귀책 {ch_blame_p:.0f}%",
+            color
+        ))
+    if ch_cards:
+        render_kpi_row(ch_cards)
 
     # ══════════════════════════════════════════════════════════
     #  SECTION 2 — 귀책 분류
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 귀책 분류 현황")
+    section_header("귀책 분류 현황", "전체 · 채널별 · 월별 추이")
     tab_all, tab_ch, tab_trend = st.tabs(["전체 비중", "채널별", "월별 추이"])
 
     with tab_all:
@@ -210,7 +442,7 @@ def page_under70():
         with c1:
             fig = px.pie(blame, names="귀책분류", values="건수",
                          color_discrete_sequence=px.colors.qualitative.Set2)
-            fig.update_layout(height=350)
+            fig.update_layout(height=350, font=dict(family="Noto Sans KR"))
             st.plotly_chart(fig, use_container_width=True)
         with c2:
             st.dataframe(blame, use_container_width=True, hide_index=True)
@@ -219,33 +451,41 @@ def page_under70():
         blame_ch = df_f.groupby(["채널", "귀책분류"]).size().reset_index(name="건수")
         fig2 = px.bar(blame_ch, x="채널", y="건수", color="귀책분류",
                       barmode="group", color_discrete_sequence=px.colors.qualitative.Set2)
-        fig2.update_layout(height=400)
+        fig2.update_layout(height=400, font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig2, use_container_width=True)
+
+        # 채널별 귀책 비율 테이블
+        ch_blame_piv = df_f.groupby(["채널", "귀책분류"]).size().unstack(fill_value=0)
+        ch_blame_piv["합계"] = ch_blame_piv.sum(axis=1)
+        for col in ch_blame_piv.columns[:-1]:
+            ch_blame_piv[f"{col}(%)"] = (ch_blame_piv[col] / ch_blame_piv["합계"] * 100).round(1)
+        st.dataframe(ch_blame_piv, use_container_width=True)
 
     with tab_trend:
         mt = df_f.groupby(["회신월", "귀책분류"]).size().reset_index(name="건수")
         fig_t = px.line(mt, x="회신월", y="건수", color="귀책분류",
                         markers=True, color_discrete_sequence=px.colors.qualitative.Set2)
-        fig_t.update_layout(height=400)
+        fig_t.update_layout(height=400, font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig_t, use_container_width=True)
 
     # ══════════════════════════════════════════════════════════
     #  SECTION 3 — 불만사유 & 차감사유 텍스트 상세
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 문의불만사유 & 차감 사유 상세")
-    tab_reason, tab_deduct_detail = st.tabs(["불만사유 Top 15", "차감 사유 텍스트 빈도"])
+    section_header("문의불만사유 & 차감사유 상세", "불만사유 Top 15 · 차감사유 텍스트 빈도 · 상세분석 키워드")
+    tab_reason, tab_deduct_detail, tab_analysis_kw = st.tabs(
+        ["불만사유 Top 15", "차감사유 텍스트 빈도", "상세분석(AS) 키워드"]
+    )
 
     with tab_reason:
         reason = df_f[df_f["문의불만사유"] != ""]["문의불만사유"].value_counts().head(15).reset_index()
         reason.columns = ["불만사유", "건수"]
         fig3 = px.bar(reason, x="건수", y="불만사유", orientation="h",
                       color="건수", color_continuous_scale="Reds")
-        fig3.update_layout(height=450, yaxis=dict(autorange="reversed"))
+        fig3.update_layout(height=450, yaxis=dict(autorange="reversed"),
+                           font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig3, use_container_width=True)
 
     with tab_deduct_detail:
-        # 각 서브항목에 적힌 텍스트(차감 사유)를 모아서 빈도 분석
         sub_cols = list(SUB_LABELS.keys())
         all_reasons = []
         for _, row in df_f.iterrows():
@@ -259,23 +499,53 @@ def page_under70():
             reason_freq = reason_freq.sort_values("건수", ascending=False)
             st.dataframe(reason_freq.head(30), use_container_width=True, hide_index=True)
 
-            # 항목별 차감사유 sunburst
             fig_sun = px.sunburst(
                 reason_freq.head(50), path=["항목", "차감사유"], values="건수",
                 color="건수", color_continuous_scale="YlOrRd",
                 title="항목별 차감사유 분포"
             )
-            fig_sun.update_layout(height=500)
+            fig_sun.update_layout(height=500, font=dict(family="Noto Sans KR"))
             st.plotly_chart(fig_sun, use_container_width=True)
         else:
             st.info("차감 사유 텍스트가 없습니다.")
 
+    with tab_analysis_kw:
+        kw_df = extract_analysis_keywords(df_f["상세분석"], top_n=20)
+        if not kw_df.empty:
+            fig_kw = px.bar(kw_df, x="빈도", y="키워드", orientation="h",
+                            color="빈도", color_continuous_scale="Purples",
+                            title="상세분석(AS열) 핵심 키워드 Top 20")
+            fig_kw.update_layout(height=500, yaxis=dict(autorange="reversed"),
+                                 font=dict(family="Noto Sans KR"))
+            st.plotly_chart(fig_kw, use_container_width=True)
+
+            # 채널별 상세분석 키워드 비교
+            st.markdown("**채널별 상세분석 키워드 비교**")
+            ch_kw_tabs = st.tabs(sorted(df_f["채널"].unique()))
+            for tab_obj, ch_name in zip(ch_kw_tabs, sorted(df_f["채널"].unique())):
+                with tab_obj:
+                    ch_kw = extract_analysis_keywords(
+                        df_f[df_f["채널"] == ch_name]["상세분석"], top_n=10
+                    )
+                    if not ch_kw.empty:
+                        fig_ckw = px.bar(ch_kw, x="빈도", y="키워드", orientation="h",
+                                         color="빈도", color_continuous_scale="Blues",
+                                         title=f"[{ch_name}] 상세분석 키워드 Top 10")
+                        fig_ckw.update_layout(height=350, yaxis=dict(autorange="reversed"),
+                                              font=dict(family="Noto Sans KR"))
+                        st.plotly_chart(fig_ckw, use_container_width=True)
+                    else:
+                        st.info(f"[{ch_name}] 상세분석 텍스트가 없습니다.")
+        else:
+            st.info("상세분석 데이터가 없습니다.")
+
     # ══════════════════════════════════════════════════════════
     #  SECTION 4 — QA 항목별 차감
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### QA 항목별 차감 현황")
-    tab_cat, tab_sub, tab_heatmap = st.tabs(["대분류별", "세부항목별", "상담사 × 항목 히트맵"])
+    section_header("QA 항목별 차감 현황", "대분류별 · 세부항목별 · 상담사×항목 히트맵 · 채널별 비교")
+    tab_cat, tab_sub, tab_heatmap, tab_ch_qa = st.tabs(
+        ["대분류별", "세부항목별", "상담사×항목 히트맵", "채널별 항목 비교"]
+    )
 
     with tab_cat:
         cat_cols = ["정확성(30)_차감", "숙련도(20)_차감", "친절도(30)_차감", "약속이행(20)_차감"]
@@ -285,7 +555,7 @@ def page_under70():
         fig4 = px.bar(cat_means, x="항목", y="평균차감",
                       color="평균차감", color_continuous_scale="OrRd",
                       title="대분류별 평균 차감 점수")
-        fig4.update_layout(height=350)
+        fig4.update_layout(height=350, font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig4, use_container_width=True)
 
     with tab_sub:
@@ -298,11 +568,11 @@ def page_under70():
         sub_counts = sub_counts.sort_values("차감건수", ascending=False)
         fig5 = px.bar(sub_counts, x="차감건수", y="항목", orientation="h",
                       color="차감건수", color_continuous_scale="YlOrRd")
-        fig5.update_layout(height=500, yaxis=dict(autorange="reversed"))
+        fig5.update_layout(height=500, yaxis=dict(autorange="reversed"),
+                           font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig5, use_container_width=True)
 
     with tab_heatmap:
-        # 상담사 × 세부항목 감점율 히트맵
         sub_flag_cols = [c for c in df_f.columns if c.endswith("_감점")]
         hm = df_f.groupby("상담사")[sub_flag_cols].mean().round(2) * 100
         hm.columns = [SUB_LABELS.get(c.replace("_감점", ""), c.replace("_감점", "")) for c in hm.columns]
@@ -312,22 +582,43 @@ def page_under70():
             title="상담사별 항목 감점율 (%)",
             labels=dict(x="QA 항목", y="상담사", color="감점율(%)"),
         )
-        fig_hm.update_layout(height=max(350, len(hm) * 35))
+        fig_hm.update_layout(height=max(350, len(hm) * 35),
+                             font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig_hm, use_container_width=True)
+
+    with tab_ch_qa:
+        # 채널별 대분류 차감 비교
+        ch_cat = df_f.groupby("채널")[cat_cols].mean().round(1)
+        ch_cat.columns = [c.replace("_차감", "") for c in ch_cat.columns]
+        ch_cat_long = ch_cat.reset_index().melt(id_vars="채널", var_name="항목", value_name="평균차감")
+        fig_chqa = px.bar(ch_cat_long, x="채널", y="평균차감", color="항목",
+                          barmode="group", color_discrete_sequence=[C_DANGER, C_WARNING, C_PRIMARY, C_SUCCESS],
+                          title="채널별 대분류 평균 차감 비교")
+        fig_chqa.update_layout(height=400, font=dict(family="Noto Sans KR"))
+        st.plotly_chart(fig_chqa, use_container_width=True)
+
+        # 채널별 세부항목 히트맵
+        ch_sub_hm = df_f.groupby("채널")[sub_flag_cols].mean().round(2) * 100
+        ch_sub_hm.columns = [SUB_LABELS.get(c.replace("_감점", ""), c.replace("_감점", "")) for c in ch_sub_hm.columns]
+        fig_chsub = px.imshow(
+            ch_sub_hm, text_auto=".0f", aspect="auto",
+            color_continuous_scale="YlOrRd",
+            title="채널별 세부항목 감점율 (%)",
+            labels=dict(x="QA 항목", y="채널", color="감점율(%)"),
+        )
+        fig_chsub.update_layout(height=max(250, len(ch_sub_hm) * 50),
+                                font=dict(family="Noto Sans KR"))
+        st.plotly_chart(fig_chsub, use_container_width=True)
 
     # ══════════════════════════════════════════════════════════
     #  SECTION 5 — 고객 코멘트(Q3) vs 귀책 교차분석
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 고객 코멘트(Q3) vs 실제 귀책 교차분석")
-    st.caption("고객이 긍정적으로 응답했는데 상담사 귀책? 부정인데 IBR/고객 귀책? 같은 불일치 케이스 분석")
-
+    section_header("고객 코멘트(Q3) vs 실제 귀책 교차분석",
+                   "고객 긍정인데 상담사 귀책? 부정인데 고객/IBR 귀책? 불일치 케이스 분석")
     tab_mismatch, tab_sentiment = st.tabs(["불일치 케이스", "긍정/부정 × 귀책"])
 
     with tab_mismatch:
-        # 긍정인데 상담사 귀책
         pos_agent = df_f[(df_f["긍정부정"] == "긍정") & (df_f["귀책분류"] == "상담사")]
-        # 부정인데 고객/IBR 귀책
         neg_not_agent = df_f[(df_f["긍정부정"] == "부정") & (df_f["귀책분류"].isin(["고객", "IBR"]))]
 
         mc1, mc2 = st.columns(2)
@@ -349,12 +640,12 @@ def page_under70():
     with tab_sentiment:
         cross_sent = df_f.groupby(["긍정부정", "귀책분류"]).size().reset_index(name="건수")
         fig_cs = px.bar(cross_sent, x="귀책분류", y="건수", color="긍정부정",
-                        barmode="group", color_discrete_map={"긍정": C_SUCCESS, "부정": C_DANGER, "기타": C_WARNING},
+                        barmode="group",
+                        color_discrete_map={"긍정": C_SUCCESS, "부정": C_DANGER, "기타": C_WARNING},
                         title="고객 긍정/부정 × 귀책 분류")
-        fig_cs.update_layout(height=400)
+        fig_cs.update_layout(height=400, font=dict(family="Noto Sans KR"))
         st.plotly_chart(fig_cs, use_container_width=True)
 
-        # 긍정/부정별 평균 점수 비교
         sent_score = df_f.groupby("긍정부정").agg(
             건수=("상담이력KEY", "count"),
             평균_CSAT=("최종점수", "mean"),
@@ -363,10 +654,10 @@ def page_under70():
         st.dataframe(sent_score, use_container_width=True, hide_index=True)
 
     # ══════════════════════════════════════════════════════════
-    #  SECTION 6 — 상담사별 상세 성과
+    #  SECTION 6 — 상담사별 QA 상세 성과 + 종합 프로파일
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 상담사별 QA 상세 성과")
+    section_header("상담사별 QA 상세 성과 & 종합 프로파일",
+                   "성과 테이블 · 레이더 · 귀책 · 채널별 취약점 · 상세분석 종합 · 자동 코칭 포인트")
 
     agent_agg = (
         df_f.groupby("상담사")
@@ -391,14 +682,45 @@ def page_under70():
     st.dataframe(agent_agg, use_container_width=True, hide_index=True)
 
     # ── 상담사 상세 드릴다운 ──
-    sel_agent = st.selectbox("상담사 상세 보기", agent_agg["상담사"].tolist(), key="u70_agent_sel")
+    sel_agent = st.selectbox("🔎 상담사 상세 보기", agent_agg["상담사"].tolist(), key="u70_agent_sel")
     if sel_agent:
         df_agent = df_f[df_f["상담사"] == sel_agent]
         row = agent_agg[agent_agg["상담사"] == sel_agent].iloc[0]
+        profile = build_agent_profile(df_agent, sel_agent)
 
+        # ── 종합 프로파일 카드 ──
+        tags_html = ""
+        for cmt in profile["종합코멘트"]:
+            cls = "warn" if "⚠️" in cmt or "심각" in cmt or "필요" in cmt else "ok"
+            tags_html += f'<span class="profile-tag {cls}">{cmt}</span> '
+
+        ch_badges = ""
+        for ch, perf in profile["채널별성과"].items():
+            bg = ch_color(ch)
+            ch_badges += (
+                f'<span class="ch-badge" style="background:{bg};">'
+                f'{ch}: {perf["건수"]}건 · CSAT {perf["평균CSAT"]} · QA {perf["평균QA이행"]}'
+                f'</span> '
+            )
+
+        st.markdown(f"""
+        <div class="profile-card">
+            <h4>👤 {sel_agent} — 종합 프로파일</h4>
+            <p style="margin:4px 0;">
+                건수 <b>{profile['건수']}</b> · 평균CSAT <b>{profile['평균CSAT']}</b>
+                · 평균QA이행 <b>{profile['평균QA이행']}</b>
+                · 주요귀책 <b>{profile['주요귀책']}</b>
+                · 최다차감 <b>{profile['최다차감분류']}({profile['최다차감점수']}점)</b>
+                · 반복지적 <b>{profile['최다차감항목']}({profile['최다차감항목건수']}건)</b>
+            </p>
+            <div style="margin:8px 0;">{ch_badges}</div>
+            <div style="margin:8px 0;">{tags_html}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── 레이더 + 귀책 파이 ──
         ac1, ac2 = st.columns([1, 1])
         with ac1:
-            # 레이더 차트 — 획득 점수
             cats = ["정확성(30)", "숙련도(20)", "친절도(30)", "약속이행(20)"]
             deducts = [row["정확성"], row["숙련도"], row["친절도"], row["약속이행"]]
             max_vals = [30, 20, 30, 20]
@@ -409,25 +731,74 @@ def page_under70():
                 r=earned + [earned[0]],
                 theta=cats + [cats[0]],
                 fill="toself", name=sel_agent, line_color=C_PRIMARY,
+                fillcolor="rgba(99,102,241,0.15)",
             ))
             fig6.update_layout(
                 polar=dict(radialaxis=dict(visible=True, range=[0, 30])),
                 title=f"{sel_agent} — 항목별 획득 점수", height=380,
+                font=dict(family="Noto Sans KR"),
             )
             st.plotly_chart(fig6, use_container_width=True)
 
         with ac2:
-            # 이 상담사의 귀책 분포
             ab = df_agent["귀책분류"].value_counts().reset_index()
             ab.columns = ["귀책분류", "건수"]
             fig_ab = px.pie(ab, names="귀책분류", values="건수",
                             color_discrete_sequence=px.colors.qualitative.Pastel,
                             title=f"{sel_agent} — 귀책 분포")
-            fig_ab.update_layout(height=380)
+            fig_ab.update_layout(height=380, font=dict(family="Noto Sans KR"))
             st.plotly_chart(fig_ab, use_container_width=True)
 
-        # 이 상담사의 차감 사유 상세
-        st.markdown(f"**{sel_agent}의 차감 사유 상세**")
+        # ── 채널별 성과 비교 ──
+        st.markdown(f"**{sel_agent} — 채널별 성과 비교**")
+        ch_perf_data = profile["채널별성과"]
+        if ch_perf_data:
+            ch_rows = []
+            for ch, perf in ch_perf_data.items():
+                ch_rows.append({
+                    "채널": ch, "건수": perf["건수"],
+                    "평균CSAT": perf["평균CSAT"], "평균QA이행": perf["평균QA이행"],
+                    "상담사귀책건수": perf["상담사귀책건수"],
+                    "귀책율(%)": round(perf["상담사귀책건수"] / perf["건수"] * 100, 1) if perf["건수"] else 0,
+                })
+            df_ch_perf = pd.DataFrame(ch_rows)
+            st.dataframe(df_ch_perf, use_container_width=True, hide_index=True)
+
+            # 채널별 QA이행 바 차트
+            fig_chp = px.bar(df_ch_perf, x="채널", y="평균QA이행",
+                             color="채널",
+                             color_discrete_map={ch: ch_color(ch) for ch in df_ch_perf["채널"]},
+                             title=f"{sel_agent} — 채널별 QA이행 비교",
+                             text="평균QA이행")
+            fig_chp.update_layout(height=350, showlegend=False,
+                                  font=dict(family="Noto Sans KR"))
+            fig_chp.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+            st.plotly_chart(fig_chp, use_container_width=True)
+
+        # ── 상세분석(AS열) 키워드 ──
+        st.markdown(f"**{sel_agent} — 상세분석(AS열) 종합 키워드**")
+        kw_agent = profile["상세분석키워드"]
+        if not kw_agent.empty:
+            fig_akw = px.bar(kw_agent, x="빈도", y="키워드", orientation="h",
+                             color="빈도", color_continuous_scale="Purples",
+                             title=f"{sel_agent} 상세분석 핵심 키워드")
+            fig_akw.update_layout(height=350, yaxis=dict(autorange="reversed"),
+                                  font=dict(family="Noto Sans KR"))
+            st.plotly_chart(fig_akw, use_container_width=True)
+        else:
+            st.info("상세분석 텍스트가 없습니다.")
+
+        # ── 상세분석 원문 모아보기 ──
+        with st.expander(f"{sel_agent} — 상세분석 원문 전체"):
+            analysis_texts = df_agent[df_agent["상세분석"] != ""][["회신월", "채널", "최종점수",
+                                                                  "귀책분류", "상세분석"]].sort_values("회신월")
+            if not analysis_texts.empty:
+                st.dataframe(analysis_texts, use_container_width=True, hide_index=True, height=400)
+            else:
+                st.info("상세분석 데이터 없음")
+
+        # ── 차감 사유 상세 ──
+        st.markdown(f"**{sel_agent}의 차감사유 상세**")
         sub_cols = list(SUB_LABELS.keys())
         agent_reasons = []
         for _, r in df_agent.iterrows():
@@ -448,7 +819,7 @@ def page_under70():
         else:
             st.info("차감 사유가 없습니다.")
 
-        # 이 상담사의 건별 상세
+        # ── 건별 상세 ──
         st.markdown(f"**{sel_agent} — 건별 상세**")
         detail_cols = ["회신월", "채널", "사업자", "브랜드", "최종점수", "QA이행점수",
                        "귀책분류", "문의불만사유", "긍정부정", "Q3", "상세분석", "피드백여부"]
@@ -459,10 +830,10 @@ def page_under70():
         )
 
     # ══════════════════════════════════════════════════════════
-    #  SECTION 7 — 귀책 × CSAT 교차 산점도
+    #  SECTION 7 — 귀책 × CSAT × QA이행 교차
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 귀책 × CSAT × QA이행 교차")
+    section_header("귀책 × CSAT × QA이행 교차", "귀책 유형별 평균 점수 비교 · 산점도")
+
     cross = (
         df_f.groupby("귀책분류")
         .agg(건수=("상담이력KEY", "count"),
@@ -479,14 +850,14 @@ def page_under70():
         title="CSAT vs QA이행 (버블=차감량, 색=귀책)",
         color_discrete_sequence=px.colors.qualitative.Set2,
     )
-    fig7.update_layout(height=500)
+    fig7.update_layout(height=500, font=dict(family="Noto Sans KR"))
     st.plotly_chart(fig7, use_container_width=True)
 
     # ══════════════════════════════════════════════════════════
     #  SECTION 8 — 상세 데이터 테이블
     # ══════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.markdown("### 전체 상세 데이터")
+    section_header("전체 상세 데이터", "필터 적용 전체 데이터 (QA이행점수 오름차순)")
+
     show_cols = [
         "회신월", "발송일자", "상담사", "채널", "사업자", "브랜드",
         "상담유형대", "긍정부정", "최종점수", "친절점수", "만족점수",
