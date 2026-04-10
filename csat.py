@@ -8,7 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
-from page_under70 import page_under70_analysis
+from page_under70 import page_under70
 
 # ══════════════════════════════════════════════════════════════════
 # 0. 전역 상수 & 색상 팔레트 (변경 없음)
